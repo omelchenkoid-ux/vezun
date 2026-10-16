@@ -108,8 +108,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1f2937; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 2000; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
 .toast.show { display: block; animation: slideUp 0.3s ease; }
 @keyframes slideUp { from { transform: translateX(-50%) translateY(100px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
-.file-protocol-warning { display: none; background: #fef2f2; border: 2px solid #ef4444; color: #991b1b; padding: 20px; border-radius: 12px; margin: 20px; text-align: center; font-size: 15px; line-height: 1.5; }
-.file-protocol-warning strong { display: block; margin-bottom: 8px; font-size: 18px; }
+
 .exp-btn { padding:10px 6px; background:#f9fafb; border:2px solid #e5e7eb; border-radius:8px; font-size:12px; cursor:pointer; transition:all .2s; font-weight:600; }
 .exp-btn:hover { border-color:#ff6b00; background:#fff7ed; }
 .exp-btn.active { border-color:#10b981; background:#ecfdf5; color:#047857; }
@@ -117,14 +116,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 </head>
 <body>
 
-<div id="file-warning" class="file-protocol-warning">
-<strong>⚠️ Приложение не может работать в этом режиме</strong>
-Вы открыли файл напрямую. На iPhone это блокирует работу.<br><br>
-<b>Что делать:</b><br>
-1. Скопируйте ссылку на этот сайт.<br>
-2. Откройте её в браузере Safari или Chrome.<br>
-3. Не открывайте файл через "Предпросмотр" в Telegram/WhatsApp.
-</div>
+
 
 <div class="auth-screen" id="auth-screen">
 <div class="auth-title">ГТ ВЕЗУН</div>
