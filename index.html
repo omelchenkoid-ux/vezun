@@ -338,8 +338,8 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
       </div>
       <div id="documents-preview" style="margin-top:12px;padding:10px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:6px;font-size:13px;color:#065f46;text-align:center;font-weight:600;">Выберите время</div>
     </div>
-    <div class="modal-actions">
-      <button class="btn-save" onclick="confirmExpedition()">✅ Применить</button>
+     <div class="modal-actions">
+      <button class="btn-save" onclick="confirmDocuments()">✅ Применить</button>
     </div>
   </div>
 </div>
@@ -689,7 +689,16 @@ html += `<div class="calc-row"><span>👥 Грузчики (${count} чел × $
 html += `<div class="calc-row" style="color:#7c3aed;font-weight:700;font-size:13px;border-top:1px dashed #ddd6fe;padding-top:4px;margin-top:4px"><span>💵 Выплатить грузчикам:</span><span>${loaderPayTotal.toLocaleString('ru-RU')} ₽</span></div>`;
 }
 
-const total = vehicleCost + loaderCostTotal;
+// 🔽 Считаем доп услуги (экспедирование + документы)
+let extrasTotal = 0;
+if (o.extraServices) {
+    if (o.extraServices.expedition?.cost) extrasTotal += o.extraServices.expedition.cost;
+    if (o.extraServices.documents?.cost)  extrasTotal += o.extraServices.documents.cost;
+}
+if (extrasTotal > 0) {
+    html += `<div class="calc-row" style="color:#8b5cf6"><span>🛎 Доп услуги:</span><span>+ ${extrasTotal.toLocaleString('ru-RU')} ₽</span></div>`;
+}
+const total = vehicleCost + loaderCostTotal + extrasTotal;
 html += `<div class="calc-total"><span>ИТОГО клиент:</span><span>${total.toLocaleString('ru-RU')} ₽</span></div>`;
 
 // 🔽 НОВОЕ: Показываем ТБО и чистую, если они уже введены
