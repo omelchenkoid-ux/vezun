@@ -627,6 +627,7 @@ html += '<div class="calc-title">💰 Расчёт стоимости</div>';
 let vehicleCost = 0;
 let vehicleTimeLabel = `${vHrs}ч ${vMin}мин`;
 if (vTm > 0 || o.vehicleActualTime) {
+
 if (cat === 'trash') {
 const fixBase = driverGetTrashFix(vtype);
 const district = o.districtSurcharge || 0;
@@ -646,6 +647,8 @@ const extraMin = vTm - 60;
 const extraHalfHours = Math.ceil(extraMin / 30);
 vehicleCost += extraHalfHours * half;
 }
+const surcharge = driverGetSurcharge(startH);
+if (surcharge > 0) vehicleTimeLabel = `${vHrs}ч ${vMin}мин · 🌙 вечер +${surcharge}₽`;
 }
 else if (cat === 'intercity-place' && o.intercityData) {
 const icd = o.intercityData;
@@ -664,11 +667,19 @@ const extraHalfHours = Math.ceil(extraMin / 30);
 vehicleCost = icd.price + (extraHalfHours * half);
 }
 }
+const surcharge = driverGetSurcharge(startH);
+if (surcharge > 0) vehicleTimeLabel = `${vHrs}ч ${vMin}мин · 🌙 вечер +${surcharge}₽`;
 }
 else {
 const district = o.districtSurcharge || 0;
 vehicleCost = driverCalcHourly(base, startH, vTm, district, half);
+const surcharge = driverGetSurcharge(startH);
+let parts = [`${vHrs}ч ${vMin}мин`];
+if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
+if (district > 0) parts.push(`📍 отдалёнка +${district}₽`);
+vehicleTimeLabel = parts.join(' · ');
 }
+
 html += `<div class="calc-row"><span>🚗 Машина (${vehicleTimeLabel}):</span><span>${vehicleCost.toLocaleString('ru-RU')} ₽</span></div>`;
 }
 
@@ -796,11 +807,13 @@ addressesHtml += `<div class="address-item"><div class="address-label unload">Р
 });
 
 let detailsHtml = `<div class="order-details">${o.vehicleText || ''} · ${getCategoryLabel(o.category)}${o.comment ? `<br>💬 ${o.comment}` : ''}`;
-if (o.category === 'trash') {
-    const sh = o.startHour != null ? o.startHour : (o.timeHour != null ? parseInt(o.timeHour) : 12);
-    const surcharge = driverGetSurcharge(sh);
-    if (surcharge > 0) detailsHtml += `<br>🌙 Вечерний тариф: +${surcharge}₽`;
-    if ((o.districtSurcharge || 0) > 0) detailsHtml += `<br>📍 Отдалёнка: +${o.districtSurcharge}₽`;
+const sh = o.startHour != null ? o.startHour : (o.timeHour != null ? parseInt(o.timeHour) : 12);
+const surcharge = driverGetSurcharge(sh);
+if (surcharge > 0 && o.category !== 'loaders-only' && o.category !== 'intercity-km') {
+    detailsHtml += `<br>🌙 Вечерний тариф: +${surcharge}₽`;
+}
+if (o.category === 'trash' && (o.districtSurcharge || 0) > 0) {
+    detailsHtml += `<br>📍 Отдалёнка: +${o.districtSurcharge}₽`;
 }
 detailsHtml += `</div>`;
 
