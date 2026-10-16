@@ -1031,20 +1031,73 @@ document.getElementById('payment-modal').classList.add('show');
 }
 
 
+
 async function confirmPayment() {
 const paymentType = document.getElementById('payment-type').value;
 if (!paymentType) { showToast('Выберите тип оплаты'); return; }
 try {
 const order = orders.find(o => o.id === paymentOrderId);
-let newStatus = order ? order.status : 'completed';
-if (order && order.status === 'finished') {
+if (!order) { showToast('❌ Заявка не найдена'); return; }
+let newStatus = order.status;
+if (order.status === 'finished' || order.status === 'vehicle_done') {
 newStatus = 'completed';
 }
-const { error } = await sb.from('orders').update({
-payment_type: paymentType,
-status: newStatus,
-updated_at: new Date().toISOString()
-}).eq('id', paymentOrderId);
+
+// 🔽 ПЕРЕСЧЁТ СУММЫ с учётом доп услуг и грузчиков
+// Машина
+const base = order.vehicleBase || 1200;
+const half = order.vehicleHalf || 600;
+const vTime = order.vehicleActualTime || order.actualTime;
+const vTm = vTime ? ((parseInt(vTime.hours)||0) * 60 + (parseInt(vTime.minutes)||0)) : 0;
+const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
+let vehicleCost = 0;
+if (vTm > 0) {
+    if (order.category === 'trash') {
+        vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0);
+    } else if (order.category === 'intercity-km' && order.intercityData) {
+        vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate);
+        if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
+    } else if (order.category === 'intercity-place' && order.intercityData) {
+        if (vTm <= 60) vehicleCost = order.intercityData.price;
+        else vehicleCost = order.intercityData.price + Math.ceil((vTm - 60) / 30) * half;
+    } else {
+        vehicleCost = driverCalcHourly(base, startH, vTm, order.districtSurcharge || 0, half);
+    }
+} else {
+    vehicleCost = base;
+}
+// Грузчики
+let loaderCostClient = 0;
+if (order.loaderInfo && (order.loaderActualTime || order.actualTime)) {
+    const lTime = order.loaderActualTime || order.actualTime;
+    const lTm = (parseInt(lTime.hours) || 0) * 60 + (parseInt(lTime.minutes) || 0);
+    if (lTm > 0) {
+        loaderCostClient = driverCalcLoaderHourly(
+            order.loaderInfo.rate,
+            startH,
+            lTm,
+            order.loaderInfo.halfRate || Math.round(order.loaderInfo.rate / 2)
+        ) * order.loaderInfo.count;
+    }
+}
+// Доп услуги
+let extras = 0;
+if (order.extraServices) {
+    extras = (order.extraServices.expedition?.cost || 0) + (order.extraServices.documents?.cost || 0);
+}
+
+// 🔽 Записываем новую цену и сохраняем в базу
+const newPrice = vehicleCost + loaderCostClient + extras;
+const updatePayload = {
+    payment_type: paymentType,
+    status: newStatus,
+    price: newPrice,
+    original_price: newPrice,
+    vehicle_extra_cost: extras,
+    updated_at: new Date().toISOString()
+};
+
+const { error } = await sb.from('orders').update(updatePayload).eq('id', paymentOrderId);
 if (error) throw error;
 closeModal('payment-modal');
 showToast('✅ Оплата подтверждена');
@@ -1058,6 +1111,7 @@ console.error('Ошибка сохранения:', e);
 showToast('Ошибка сохранения оплаты');
 }
 }
+
 function openFinishChoiceModal(id) {
 finishChoiceOrderId = id;
 document.getElementById('finish-choice-modal').classList.add('show');
@@ -1207,10 +1261,15 @@ async function confirmExpedition() {
 }
 
 async function confirmDocuments() {
-    const hours = parseInt(document.getElementById('documents-hours').value) || 0;
+    let hours = parseInt(document.getElementById('documents-hours').value) || 0;
     const minutes = parseInt(document.getElementById('documents-minutes').value) || 0;
-    const totalHours = hours + minutes / 60;
-    if (totalHours <= 0) { showToast('⚠️ Выберите время'); return; }
+    let totalHours = hours + minutes / 60;
+    // 🔽 Страховка: если пользователь ничего не выбрал — считаем как 1 час
+    if (totalHours <= 0) {
+        hours = 1;
+        totalHours = 1;
+        document.getElementById('documents-hours').value = '1';
+    }
     const cost = Math.round(totalHours * 1200);
     const driverIncome = cost;
     pendingDocuments = { hours: totalHours, cost, driverIncome };
