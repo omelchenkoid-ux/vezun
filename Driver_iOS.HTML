@@ -605,6 +605,8 @@ if (extraMin <= 0) return rate + surcharge;
 const extraHalfHours = Math.ceil(extraMin / 30);
 return rate + surcharge + extraHalfHours * halfRate;
 }
+
+
 function renderCalculation(o) {
 const vTime = o.vehicleActualTime || o.actualTime;
 const lTime = o.loaderActualTime || o.actualTime;
@@ -633,7 +635,7 @@ const fixBase = driverGetTrashFix(vtype);
 const district = o.districtSurcharge || 0;
 const surcharge = driverGetSurcharge(startH);
 vehicleCost = driverCalcTrashVehicle(fixBase, half, vTm, district, startH);
-let parts = [`${vHrs}ч ${vMin}мин`];
+let parts = [`${vHrs}ч ${vMin}мин: вывоз мусора ${fixBase}₽`];
 if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
 if (district > 0) parts.push(`📍 отдалёнка +${district}₽`);
 vehicleTimeLabel = parts.join(' · ');
@@ -648,7 +650,9 @@ const extraHalfHours = Math.ceil(extraMin / 30);
 vehicleCost += extraHalfHours * half;
 }
 const surcharge = driverGetSurcharge(startH);
-if (surcharge > 0) vehicleTimeLabel = `${vHrs}ч ${vMin}мин · 🌙 вечер +${surcharge}₽`;
+let parts = [`${vHrs}ч ${vMin}мин: база ${base}₽ + ${icd.distance}км × 2 × ${rate}₽`];
+if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
+vehicleTimeLabel = parts.join(' · ');
 }
 else if (cat === 'intercity-place' && o.intercityData) {
 const icd = o.intercityData;
@@ -668,13 +672,15 @@ vehicleCost = icd.price + (extraHalfHours * half);
 }
 }
 const surcharge = driverGetSurcharge(startH);
-if (surcharge > 0) vehicleTimeLabel = `${vHrs}ч ${vMin}мин · 🌙 вечер +${surcharge}₽`;
+let parts = [`${vHrs}ч ${vMin}мин: ${icd.placeName || 'межгород'} ${icd.price}₽`];
+if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
+vehicleTimeLabel = parts.join(' · ');
 }
 else {
 const district = o.districtSurcharge || 0;
 vehicleCost = driverCalcHourly(base, startH, vTm, district, half);
 const surcharge = driverGetSurcharge(startH);
-let parts = [`${vHrs}ч ${vMin}мин`];
+let parts = [`${vHrs}ч ${vMin}мин: машина ${base}₽`];
 if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
 if (district > 0) parts.push(`📍 отдалёнка +${district}₽`);
 vehicleTimeLabel = parts.join(' · ');
@@ -693,9 +699,15 @@ const payToLoader = rate - 100;
 const payHalfRate = halfRate - 50;
 loaderCostTotal = driverCalcLoaderHourly(rate, startH, lTm, halfRate) * count;
 loaderPayTotal = driverCalcLoaderHourly(payToLoader, startH, lTm, payHalfRate) * count;
-html += `<div class="calc-row"><span>👥 Грузчики (${count} чел × ${lHrs}ч${lMin>0?' '+lMin+'м':''}):</span><span>${loaderCostTotal.toLocaleString('ru-RU')} ₽</span></div>`;
+
+let loaderLabel = `${count} чел × ${lHrs}ч${lMin>0?' '+lMin+'м':''} — ${rate}₽`;
+const loaderSurcharge = driverGetLoaderSurcharge(startH);
+if (loaderSurcharge > 0) loaderLabel += ` · 🌙 вечер +${loaderSurcharge}₽`;
+
+html += `<div class="calc-row"><span>👥 Грузчики (${loaderLabel}):</span><span>${loaderCostTotal.toLocaleString('ru-RU')} ₽</span></div>`;
 html += `<div class="calc-row" style="color:#7c3aed;font-weight:700;font-size:13px;border-top:1px dashed #ddd6fe;padding-top:4px;margin-top:4px"><span>💵 Выплатить грузчикам:</span><span>${loaderPayTotal.toLocaleString('ru-RU')} ₽</span></div>`;
 }
+
 
 // 🔽 Считаем доп услуги (экспедирование + документы)
 let extrasTotal = 0;
@@ -812,7 +824,7 @@ const surcharge = driverGetSurcharge(sh);
 if (surcharge > 0 && o.category !== 'loaders-only' && o.category !== 'intercity-km') {
     detailsHtml += `<br>🌙 Вечерний тариф: +${surcharge}₽`;
 }
-if (o.category === 'trash' && (o.districtSurcharge || 0) > 0) {
+if (o.category !== 'loaders-only' && o.category !== 'intercity-km' && (o.districtSurcharge || 0) > 0) {
     detailsHtml += `<br>📍 Отдалёнка: +${o.districtSurcharge}₽`;
 }
 detailsHtml += `</div>`;
