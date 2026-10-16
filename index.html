@@ -575,12 +575,13 @@ const extraHalfHours = Math.ceil(extraMin / 30);
 const firstHourCost = base + surcharge + districtSurcharge;
 return firstHourCost + (extraHalfHours * halfRate);
 }
-function driverCalcTrashVehicle(fixBase, halfRate, totalMin, districtSurcharge = 0) {
-if (totalMin <= 0) return fixBase + districtSurcharge;
-if (totalMin <= 60) return fixBase + districtSurcharge;
+function driverCalcTrashVehicle(fixBase, halfRate, totalMin, districtSurcharge = 0, startHour = 12) {
+const surcharge = driverGetSurcharge(startHour);
+if (totalMin <= 0) return fixBase + surcharge + districtSurcharge;
+if (totalMin <= 60) return fixBase + surcharge + districtSurcharge;
 const extraMin = totalMin - 60;
 const extraHalfHours = Math.ceil(extraMin / 30);
-return fixBase + districtSurcharge + extraHalfHours * halfRate;
+return fixBase + surcharge + districtSurcharge + extraHalfHours * halfRate;
 }
 function driverGetIntercityKmRate(vehicleType) {
 if (vehicleType === 'extended') return 33;
@@ -629,8 +630,12 @@ if (vTm > 0 || o.vehicleActualTime) {
 if (cat === 'trash') {
 const fixBase = driverGetTrashFix(vtype);
 const district = o.districtSurcharge || 0;
-vehicleCost = driverCalcTrashVehicle(fixBase, half, vTm, district);
-vehicleTimeLabel = `${vHrs}ч ${vMin}мин (фикс + сверхурочные)${district > 0 ? ' + отдалёнка ' + district + '₽' : ''}`;
+const surcharge = driverGetSurcharge(startH);
+vehicleCost = driverCalcTrashVehicle(fixBase, half, vTm, district, startH);
+let parts = [`${vHrs}ч ${vMin}мин`];
+if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
+if (district > 0) parts.push(`📍 отдалёнка +${district}₽`);
+vehicleTimeLabel = parts.join(' · ');
 }
 else if (cat === 'intercity-km' && o.intercityData) {
 const icd = o.intercityData;
@@ -790,7 +795,14 @@ addressesHtml += `<div class="address-item"><div class="address-label load">За
 addressesHtml += `<div class="address-item"><div class="address-label unload">Разгрузка</div><div class="address-text">${getAddressText(a)}</div></div>`;
 });
 
-let detailsHtml = `<div class="order-details">${o.vehicleText || ''} · ${getCategoryLabel(o.category)}${o.comment ? `<br>💬 ${o.comment}` : ''}</div>`;
+let detailsHtml = `<div class="order-details">${o.vehicleText || ''} · ${getCategoryLabel(o.category)}${o.comment ? `<br>💬 ${o.comment}` : ''}`;
+if (o.category === 'trash') {
+    const sh = o.startHour != null ? o.startHour : (o.timeHour != null ? parseInt(o.timeHour) : 12);
+    const surcharge = driverGetSurcharge(sh);
+    if (surcharge > 0) detailsHtml += `<br>🌙 Вечерний тариф: +${surcharge}₽`;
+    if ((o.districtSurcharge || 0) > 0) detailsHtml += `<br>📍 Отдалёнка: +${o.districtSurcharge}₽`;
+}
+detailsHtml += `</div>`;
 
 const districtsText = getDistrictsText(o);
 let districtsHtml = districtsText ? `<div class="order-districts">${districtsText}</div>` : '';
@@ -962,7 +974,7 @@ const startH = order.startHour != null ? order.startHour : (order.timeHour != nu
 let vehicleCost = 0;
 if (vTm > 0) {
 if (order.category === 'trash') {
-vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0);
+vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0, startH);
 } else if (order.category === 'intercity-km' && order.intercityData) {
 vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate);
 if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
@@ -1045,8 +1057,8 @@ const startH = order.startHour != null ? order.startHour : (order.timeHour != nu
 let vehicleCost = 0;
 if (vTm > 0) {
     if (order.category === 'trash') {
-        vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0);
-    } else if (order.category === 'intercity-km' && order.intercityData) {
+vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0, startH);
+} else if (order.category === 'intercity-km' && order.intercityData) {
         vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate);
         if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
     } else if (order.category === 'intercity-place' && order.intercityData) {
@@ -1368,16 +1380,16 @@ if (!order) return;
 tboOrderId = id;
 const vtype = getVehicleType(order.vehicleBase);
 const driverLoaderPay = driverGetTrashDriverLoaderPay(vtype);
-// Считаем реальную стоимость машины (с районом и фактическим временем)
+// 🔽 startH объявляем ДО вызова driverCalcTrashVehicle
+const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
 const vTime = order.vehicleActualTime || order.actualTime;
 const vHrs = vTime ? (parseInt(vTime.hours) || 0) : 0;
 const vMin = vTime ? (parseInt(vTime.minutes) || 0) : 0;
 const vTm = vHrs * 60 + vMin;
 const district = order.districtSurcharge || 0;
 const fixBase = driverGetTrashFix(vtype);
-const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district);
-// Комиссия грузчиков = 100₽/чел за 1 час (или 200₽ если после 23:00)
-const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
+// 🔽 Передаём startH
+const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH);
 let loaderCommission = 0;
 if (order.loaderInfo) {
 const lTime = order.loaderActualTime || order.actualTime;
@@ -1411,14 +1423,16 @@ if (!order) return;
 const tboAmount = parseInt(document.getElementById('tbo-amount').value) || 0;
 const vtype = getVehicleType(order.vehicleBase);
 const driverLoaderPay = driverGetTrashDriverLoaderPay(vtype);
+// 🔽 startH объявляем ДО вызова driverCalcTrashVehicle
+const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
 const vTime = order.vehicleActualTime || order.actualTime;
 const vHrs = vTime ? (parseInt(vTime.hours) || 0) : 0;
 const vMin = vTime ? (parseInt(vTime.minutes) || 0) : 0;
 const vTm = vHrs * 60 + vMin;
 const district = order.districtSurcharge || 0;
 const fixBase = driverGetTrashFix(vtype);
-const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district);
-const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
+// 🔽 Передаём startH
+const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH);
 let loaderCommission = 0;
 if (order.loaderInfo) {
 const lTime = order.loaderActualTime || order.actualTime;
