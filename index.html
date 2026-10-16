@@ -689,16 +689,7 @@ html += `<div class="calc-row"><span>👥 Грузчики (${count} чел × $
 html += `<div class="calc-row" style="color:#7c3aed;font-weight:700;font-size:13px;border-top:1px dashed #ddd6fe;padding-top:4px;margin-top:4px"><span>💵 Выплатить грузчикам:</span><span>${loaderPayTotal.toLocaleString('ru-RU')} ₽</span></div>`;
 }
 
-// 🔽 ДОБАВЛЕНО: учитываем доп услуги водителя в итоге клиента
-let extrasTotal = 0;
-if (o.extraServices) {
-    if (o.extraServices.expedition?.cost) extrasTotal += o.extraServices.expedition.cost;
-    if (o.extraServices.documents?.cost)  extrasTotal += o.extraServices.documents.cost;
-}
-if (extrasTotal > 0) {
-    html += `<div class="calc-row" style="color:#8b5cf6"><span>🛎 Доп услуги:</span><span>+ ${extrasTotal.toLocaleString('ru-RU')} ₽</span></div>`;
-}
-const total = vehicleCost + loaderCostTotal + extrasTotal;
+const total = vehicleCost + loaderCostTotal;
 html += `<div class="calc-total"><span>ИТОГО клиент:</span><span>${total.toLocaleString('ru-RU')} ₽</span></div>`;
 
 // 🔽 НОВОЕ: Показываем ТБО и чистую, если они уже введены
@@ -879,7 +870,6 @@ buttons.push(`<button class="action-btn secondary" onclick="openPaymentModal(${o
 buttons.push(`<button class="action-btn" style="background:#8b5cf6;color:#fff;" onclick="openExtraServicesFromOrder(${o.id})">🛎 Доп услуги</button>`);
 } else {
 buttons.push(`<div class="payment-info">✓ ${getPaymentLabel(o.paymentType)}<small>Ожидает подтверждения диспетчера</small></div>`);
-buttons.push(`<button class="action-btn" style="background:#8b5cf6;color:#fff;" onclick="openExtraServicesFromOrder(${o.id})">🛎 Доп услуги</button>`);
 }
 }
 else if (o.status === 'completed') {
@@ -889,7 +879,6 @@ buttons.push(`<button class="action-btn secondary" onclick="openPaymentModal(${o
 buttons.push(`<button class="action-btn" style="background:#8b5cf6;color:#fff;" onclick="openExtraServicesFromOrder(${o.id})">🛎 Доп услуги</button>`);
 } else {
 buttons.push(`<div class="payment-info">✓ ${getPaymentLabel(o.paymentType)}<small>Ожидает подтверждения диспетчера</small></div>`);
-buttons.push(`<button class="action-btn" style="background:#8b5cf6;color:#fff;" onclick="openExtraServicesFromOrder(${o.id})">🛎 Доп услуги</button>`);
 }
 }
 else if (o.status === 'done') {
@@ -1160,7 +1149,6 @@ function openExtraServices() {
     pendingExpedition = { hours: 0, cost: 0, driverIncome: 0 };
     pendingDocuments  = { hours: 0, cost: 0, driverIncome: 0 };
     pendingServiceType = null;
-    closeModal('finish-choice-modal');
     closeModal('payment-modal');
     document.getElementById('extra-services-modal').classList.add('show');
 }
@@ -1203,8 +1191,10 @@ async function confirmExpedition() {
     if (!orderIdToUse) { showToast('❌ Ошибка: заявка не найдена'); return; }
     await saveExtraService('expedition', pendingExpedition, orderIdToUse);
     closeModal('expedition-modal');
-    paymentOrderId = orderIdToUse;
-    openPaymentModal(orderIdToUse);
+    closeModal('payment-modal');
+    // 🔽 Возвращаемся в окно с тремя кнопками, а не в оплату
+    finishChoiceOrderId = orderIdToUse;
+    openFinishChoiceModal(orderIdToUse);
 }
 
 async function confirmDocuments() {
@@ -1219,8 +1209,10 @@ async function confirmDocuments() {
     if (!orderIdToUse) { showToast('❌ Ошибка: заявка не найдена'); return; }
     await saveExtraService('documents', pendingDocuments, orderIdToUse);
     closeModal('documents-modal');
-    paymentOrderId = orderIdToUse;
-    openPaymentModal(orderIdToUse);
+    closeModal('payment-modal');
+    // 🔽 Возвращаемся в окно с тремя кнопками, а не в оплату
+    finishChoiceOrderId = orderIdToUse;
+    openFinishChoiceModal(orderIdToUse);
 }
 
 async function saveExtraService(type, data, orderId) {
