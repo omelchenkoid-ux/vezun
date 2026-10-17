@@ -394,6 +394,7 @@ let pendingExpedition = { hours: 0, cost: 0, driverIncome: 0 };
 let pendingServiceType = null;
 let pendingDocuments  = { hours: 0, cost: 0, driverIncome: 0 };
 let isStartingLoaders = false; // Защита от двойного клика
+let blockedLoaderTimers = {}; // ЗАМОК: здесь мы запоминаем заявки, где водитель выбрал "только машина"
 
 // ============ УТИЛИТЫ ============
 function getLocalDate(offset = 0) {
@@ -810,6 +811,13 @@ orders.forEach(o => {
     if (o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished) {
         startTimer(o.id, o.vehicleStartTime);
     }
+    
+    // 🔽 ПРОВЕРКА ЗАМКА: если стоит блокировка, таймер грузчиков НЕ запускаем, 
+    // даже если в базе случайно оказалось время
+    if (blockedLoaderTimers[o.id]) {
+        return; // Пропускаем запуск таймера грузчиков
+    }
+
     const hasValidLoaderStart = o.loaderStartTime && 
                                 o.loaderStartTime !== 'null' && 
                                 o.loaderStartTime !== 'undefined' && 
@@ -904,7 +912,9 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-tran
 }
 
 const hasLoaders = !!o.loaderInfo;
-const loadersStarted = hasLoaders && o.loaderStartTime != null && o.loaderStartTime !== 'null';
+// 🔽 Если стоит замок, считаем, что грузчики ЕЩЕ НЕ начали
+const isBlocked = !!blockedLoaderTimers[o.id];
+const loadersStarted = hasLoaders && o.loaderStartTime != null && o.loaderStartTime !== 'null' && !isBlocked;
 const loadersFinished = o.isLoaderFinished === true;
 
 if (hasLoaders && loadersStarted && !loadersFinished) {
@@ -920,7 +930,8 @@ if (hasLoaders && !loadersStarted && !loadersFinished) {
     }
 }
 
-if (!hasLoaders || loadersStarted || loadersFinished) {
+// Если стоит замок, кнопку "Закончил" не показываем
+if (!hasLoaders || (loadersStarted && !isBlocked) || loadersFinished) {
 buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
 }
 }
@@ -987,6 +998,10 @@ if (order.loaderInfo && loadersToo) {
 extra.loader_start_time = now;
 } else {
 extra.loader_start_time = null;
+// 🔽 СТАВИМ ЗАМОК: если выбрали "только машина", запрещаем таймеру грузчиков запускаться автоматически
+if (order.loaderInfo) {
+blockedLoaderTimers[id] = true;
+}
 }
 await updateOrderStatus(id, 'started', extra);
 }
@@ -1028,6 +1043,9 @@ async function startLoadersLater(id) {
         }).eq('id', id);
         
         if (error) throw error;
+        
+        // 🔽 СНИМАЕМ ЗАМОК: теперь таймер грузчиков может работать
+        delete blockedLoaderTimers[id];
         
         showToast('Таймер грузчиков запущен');
         await loadOrders();
