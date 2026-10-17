@@ -909,11 +909,20 @@ else if (o.status === 'seen') {
 buttons.push(`<button class="action-btn primary" onclick="markArrived(${o.id})">📍 На месте</button>`);
 }
 else if (o.status === 'arrived') {
-if (o.loaderInfo) {
-buttons.push(`<button class="action-btn primary" onclick="openStartChoiceModal(${o.id})">▶ Начал работу</button>`);
-} else {
-buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id}, true)">▶ Начал работу</button>`);
-}
+    // 🔽 НОВОЕ: Проверяем, запустил ли уже диспетчер грузчиков
+    const hasValidLoaderStart = o.loaderStartTime && 
+                                o.loaderStartTime !== 'null' && 
+                                o.loaderStartTime !== 'undefined' && 
+                                o.loaderStartTime !== '' &&
+                                !isNaN(new Date(o.loaderStartTime).getTime());
+
+    if (o.loaderInfo && !hasValidLoaderStart) {
+        // Грузчиков еще не запускали — показываем выбор (вместе или только машина)
+        buttons.push(`<button class="action-btn primary" onclick="openStartChoiceModal(${o.id})">▶ Начал работу</button>`);
+    } else {
+        // Грузчики уже запущены (диспетчером или автоматически) — показываем ОДНУ кнопку
+        buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id}, false)">▶ Начал работу (только машина)</button>`);
+    }
 }
 else if (o.status === 'started') {
 if (o.vehicleStartTime && !o.isVehicleFinished) {
