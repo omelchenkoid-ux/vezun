@@ -559,12 +559,16 @@ showToast('Ошибка загрузки заявок');
 
 // ============ REALTIME ============
 function subscribeToOrders() {
-if (!sb) return;
-realtimeSubscription = sb.channel('driver-orders-changes')
-.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
-await loadOrders();
-})
-.subscribe();
+    if (!sb) return;
+    // 🔽 ОТКЛЮЧЕНО: Realtime вызывает двойную загрузку и ломает таймеры
+    /*
+    realtimeSubscription = sb.channel('driver-orders-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
+        await loadOrders();
+    })
+    .subscribe();
+    */
+    console.log('Realtime ОТКЛЮЧЕН в драйвере, чтобы не было гонки данных');
 }
 
 // ============ РАСЧЁТ ============
@@ -906,7 +910,6 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-tran
 <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
 }
 const hasLoaders = !!o.loaderInfo;
-// 🔽 ЖЁСТКАЯ ПРОВЕРКА: время должно быть валидной датой
 const hasValidLoaderStart = o.loaderStartTime && 
                             o.loaderStartTime !== 'null' && 
                             o.loaderStartTime !== 'undefined' && 
@@ -973,16 +976,18 @@ return buttons.join('');
 
 // ============ ДЕЙСТВИЯ ============
 async function updateOrderStatus(id, newStatus, extraFields = {}) {
-try {
-const updateData = { status: newStatus, updated_at: new Date().toISOString(), ...extraFields };
-const { error } = await sb.from('orders').update(updateData).eq('id', id);
-if (error) throw error;
-showToast('Статус обновлён');
-await loadOrders();
-} catch (e) {
-console.error('Ошибка обновления:', e);
-showToast('Ошибка обновления статуса');
-}
+    try {
+        const updateData = { status: newStatus, updated_at: new Date().toISOString(), ...extraFields };
+        const { error } = await sb.from('orders').update(updateData).eq('id', id);
+        if (error) throw error;
+        showToast('Статус обновлён');
+        
+        // 🔽 ВРУЧНУЮ ПЕРЕЗАГРУЖАЕМ ЭКРАН, ТАК КАК REALTIME ОТКЛЮЧЕН
+        await loadOrders(); 
+    } catch (e) {
+        console.error('Ошибка обновления:', e);
+        showToast('Ошибка обновления статуса');
+    }
 }
 
 function markSeen(id) { updateOrderStatus(id, 'seen'); }
