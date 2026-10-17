@@ -982,16 +982,16 @@ function markSeen(id) { updateOrderStatus(id, 'seen'); }
 function markArrived(id) { updateOrderStatus(id, 'arrived'); }
 
 async function markStarted(id, loadersToo = true) {
-const order = orders.find(o => o.id === id);
-if (!order) return;
-const now = new Date().toISOString();
-const extra = { vehicle_start_time: now };
-if (order.loaderInfo && loadersToo) {
-extra.loader_start_time = now;
-} else {
-extra.loader_start_time = ''; // 🔽 Отправляем ПУСТУЮ СТРОКУ вместо null
-}
-await updateOrderStatus(id, 'started', extra);
+  const order = orders.find(o => o.id === id);
+  if (!order) return;
+  const now = new Date().toISOString();
+  const extra = { vehicle_start_time: now };
+  if (order.loaderInfo && loadersToo) {
+    extra.loader_start_time = now;
+  } else {
+    extra.loader_start_time = null;   // ← БЫЛО '' СТАЛО null
+  }
+  await updateOrderStatus(id, 'started', extra);
 }
 
 let startChoiceOrderId = null;
