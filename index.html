@@ -539,7 +539,10 @@ extraServices: (() => { try { return typeof o.extra_services === 'string' ? JSON
 vehicleExtraCost: o.vehicle_extra_cost || 0,
 driverExtraIncome: o.driver_extra_income || 0,
 vehicleStartTime: o.vehicle_start_time || null,
-loaderStartTime: o.loader_start_time || null,
+loaderStartTime: (o.loader_start_time && 
+                  o.loader_start_time !== 'null' && 
+                  o.loader_start_time !== 'undefined' && 
+                  o.loader_start_time !== '') ? o.loader_start_time : null,
 vehicleActualTime: typeof o.vehicle_actual_time === 'string' ? JSON.parse(o.vehicle_actual_time) : (o.vehicle_actual_time || null),
 loaderActualTime: typeof o.loader_actual_time === 'string' ? JSON.parse(o.loader_actual_time) : (o.loader_actual_time || null),
 isVehicleFinished: o.is_vehicle_finished || false,
