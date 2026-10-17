@@ -116,8 +116,6 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 </head>
 <body>
 
-
-
 <div class="auth-screen" id="auth-screen">
 <div class="auth-title">ГТ ВЕЗУН</div>
 <div class="auth-subtitle">Приложение для водителя</div>
@@ -198,7 +196,9 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 Отмена
 </button>
 </div>
-</div><div class="modal-overlay" id="tbo-modal">
+</div>
+
+<div class="modal-overlay" id="tbo-modal">
 <div class="modal">
 <h3>🗑 Сумма за ТБО</h3>
 <div class="auto-info" id="tbo-info"></div>
@@ -213,6 +213,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 </div>
 </div>
 </div>
+
 <div class="modal-overlay" id="loader-finish-modal">
 <div class="modal">
 <h3>⏱ Грузчики закончили работу</h3>
@@ -335,6 +336,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
     </div>
   </div>
 </div>
+
 <div class="modal-overlay" id="start-choice-modal">
 <div class="modal" style="max-width:90%; padding:20px;">
 <h3>▶ Как начали работу?</h3>
@@ -357,8 +359,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 <div class="toast" id="toast"></div>
 <script>
 
-
-// ============ БЕЗОПАСНАЯ РАБОТА С ПАМЯТЬЮ (ИНКОГНИТО SAFARI) ============
+// ============ БЕЗОПАСНАЯ РАБОТА С ПАМЯТЬЮ ============
 const SafeStorage = {
 get: (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } },
 set: (key, value) => { try { localStorage.setItem(key, value); return true; } catch (e) { return false; } },
@@ -392,6 +393,8 @@ let extraServicesOrderId = null;
 let pendingExpedition = { hours: 0, cost: 0, driverIncome: 0 };
 let pendingServiceType = null;
 let pendingDocuments  = { hours: 0, cost: 0, driverIncome: 0 };
+let isStartingLoaders = false; // Защита от двойного клика
+
 // ============ УТИЛИТЫ ============
 function getLocalDate(offset = 0) {
 const d = new Date();
@@ -579,8 +582,6 @@ if (vehicleType === 'volumetric') return 7000;
 return 5000;
 }
 function driverGetTrashDriverLoaderPay(vehicleType) {
-// Выплата водителю за грузчика при вывозе мусора
-// Стандарт = 600₽, Удлинённая/Кубатурная = 800₽
 if (vehicleType === 'extended' || vehicleType === 'volumetric') return 800;
 return 600;
 }
@@ -625,7 +626,6 @@ const extraHalfHours = Math.ceil(extraMin / 30);
 return rate + surcharge + extraHalfHours * halfRate;
 }
 
-
 function renderCalculation(o) {
 const vTime = o.vehicleActualTime || o.actualTime;
 const lTime = o.loaderActualTime || o.actualTime;
@@ -648,7 +648,6 @@ html += '<div class="calc-title">💰 Расчёт стоимости</div>';
 let vehicleCost = 0;
 let vehicleTimeLabel = `${vHrs}ч ${vMin}мин`;
 if (vTm > 0 || o.vehicleActualTime) {
-
 if (cat === 'trash') {
 const fixBase = driverGetTrashFix(vtype);
 const district = o.districtSurcharge || 0;
@@ -727,8 +726,6 @@ html += `<div class="calc-row"><span>👥 Грузчики (${loaderLabel}):</sp
 html += `<div class="calc-row" style="color:#7c3aed;font-weight:700;font-size:13px;border-top:1px dashed #ddd6fe;padding-top:4px;margin-top:4px"><span>💵 Выплатить грузчикам:</span><span>${loaderPayTotal.toLocaleString('ru-RU')} ₽</span></div>`;
 }
 
-
-// 🔽 Считаем доп услуги (экспедирование + документы)
 let extrasTotal = 0;
 if (o.extraServices) {
     if (o.extraServices.expedition?.cost) extrasTotal += o.extraServices.expedition.cost;
@@ -740,7 +737,6 @@ if (extrasTotal > 0) {
 const total = vehicleCost + loaderCostTotal + extrasTotal;
 html += `<div class="calc-total"><span>ИТОГО клиент:</span><span>${total.toLocaleString('ru-RU')} ₽</span></div>`;
 
-// 🔽 НОВОЕ: Показываем ТБО и чистую, если они уже введены
 if (o.category === 'trash' && o.tboAmount) {
 const driverLoaderPay = o.tboDriverLoaderPay || driverGetTrashDriverLoaderPay(vtype);
 const loaderCommission = o.loaderCommission || 0;
@@ -810,12 +806,10 @@ return;
 }
 container.innerHTML = orders.map(o => renderOrderCard(o)).join('');
 
-
 orders.forEach(o => {
     if (o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished) {
         startTimer(o.id, o.vehicleStartTime);
     }
-    // Строгая проверка на валидность времени начала грузчиков
     const hasValidLoaderStart = o.loaderStartTime && 
                                 o.loaderStartTime !== 'null' && 
                                 o.loaderStartTime !== 'undefined' && 
@@ -825,7 +819,6 @@ orders.forEach(o => {
         startLoaderTimer(o.id, o.loaderStartTime);
     }
 });
-
 }
 
 function renderOrderCard(o) {
@@ -898,35 +891,27 @@ else if (o.status === 'seen') {
 buttons.push(`<button class="action-btn primary" onclick="markArrived(${o.id})">📍 На месте</button>`);
 }
 else if (o.status === 'arrived') {
-// Если в заявке есть грузчики — даём выбор (вместе или только машина)
 if (o.loaderInfo) {
 buttons.push(`<button class="action-btn primary" onclick="openStartChoiceModal(${o.id})">▶ Начал работу</button>`);
 } else {
-// Грузчиков нет — стартуем как раньше (только машина)
 buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id}, true)">▶ Начал работу</button>`);
 }
 }
-
-
 else if (o.status === 'started') {
-// Таймер машины — всегда, если стартовала
 if (o.vehicleStartTime && !o.isVehicleFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">🚗 Машина</div>
 <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
 }
 
-// Проверяем, есть ли грузчики в заявке
 const hasLoaders = !!o.loaderInfo;
 const loadersStarted = hasLoaders && o.loaderStartTime != null && o.loaderStartTime !== 'null';
 const loadersFinished = o.isLoaderFinished === true;
 
-// Таймер грузчиков — если уже стартовали и ещё не закончили
 if (hasLoaders && loadersStarted && !loadersFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;margin-bottom:2px">👥 Грузчики</div>
 <div class="timer loader" id="loader-timer-${o.id}">00:00:00</div>`);
 }
 
-// Если есть грузчики, но они ещё НЕ стартовали — показываем кнопку "Грузчики начали"
 if (hasLoaders && !loadersStarted && !loadersFinished) {
     if (isStartingLoaders) {
         buttons.push(`<button class="action-btn" style="background:#cbd5e1; color:#fff; margin-bottom:8px;" disabled>⏳ Запуск...</button>`);
@@ -935,7 +920,10 @@ if (hasLoaders && !loadersStarted && !loadersFinished) {
     }
 }
 
-
+if (!hasLoaders || loadersStarted || loadersFinished) {
+buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
+}
+}
 else if (o.status === 'vehicle_done') {
 if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">👥 Грузчики (продолжают работу)</div>
@@ -947,7 +935,6 @@ buttons.push(`<button class="action-btn secondary" onclick="openPaymentModal(${o
 buttons.push(`<div class="payment-info">✓ ${getPaymentLabel(o.paymentType)}<small>Грузчики ещё работают</small></div>`);
 }
 buttons.push(renderCalculation(o));
-
 }
 else if (o.status === 'finished') {
 buttons.push(renderCalculation(o));
@@ -999,13 +986,11 @@ const extra = { vehicle_start_time: now };
 if (order.loaderInfo && loadersToo) {
 extra.loader_start_time = now;
 } else {
-extra.loader_start_time = null; // Жестко обнуляем
+extra.loader_start_time = null;
 }
-// Вызываем updateOrderStatus, который сделает запрос в Supabase
 await updateOrderStatus(id, 'started', extra);
 }
 
-// ============ ВЫБОР "ВМЕСТЕ ИЛИ ТОЛЬКО МАШИНА" ============
 let startChoiceOrderId = null;
 
 function openStartChoiceModal(id) {
@@ -1020,11 +1005,8 @@ async function confirmStartChoice(loadersToo) {
     await markStarted(id, loadersToo);
 }
 
-// ============ ЗАПУСК ГРУЗЧИКОВ ПОЗЖЕ ============
-let isStartingLoaders = false; // Глобальный флаг (добавьте его в начало скрипта, рядом с let currentTab = 'today')
-
 async function startLoadersLater(id) {
-    if (isStartingLoaders) return; // Защита от двойного клика
+    if (isStartingLoaders) return;
     const order = orders.find(o => o.id === id);
     if (!order) return;
     if (!order.loaderInfo) {
@@ -1040,7 +1022,6 @@ async function startLoadersLater(id) {
     const now = new Date().toISOString();
     
     try {
-        // Ждем выполнения запроса
         const { error } = await sb.from('orders').update({
             loader_start_time: now,
             updated_at: new Date().toISOString()
@@ -1054,7 +1035,6 @@ async function startLoadersLater(id) {
         console.error('Ошибка запуска грузчиков:', e);
         showToast('❌ Ошибка сохранения');
     } finally {
-        // Ждем 1 секунду, прежде чем разрешить следующий клик
         setTimeout(() => { isStartingLoaders = false; }, 1000);
     }
 }
@@ -1065,7 +1045,6 @@ function openPaymentModal(id) {
         return;
     }
     paymentOrderId = id;
-paymentOrderId = id;
 const order = orders.find(o => o.id === id);
 const select = document.getElementById('payment-type');
 const isVehicleDone = order && order.loaderInfo && !order.isLoaderFinished;
@@ -1115,7 +1094,6 @@ vehicleCost = driverCalcHourly(base, startH, vTm, order.districtSurcharge || 0, 
 } else {
 vehicleCost = base;
 }
-// 🔽 Доп услуги водителя
 let extras = 0;
 if (order.extraServices) {
     extras = (order.extraServices.expedition?.cost || 0) + (order.extraServices.documents?.cost || 0);
@@ -1131,7 +1109,6 @@ if (order.extraServices) {
     }
 }
 
-// 🔽 Считаем грузчиков (если есть) — они тоже входят в сумму клиента
 let loaderCostClient = 0;
 if (order.loaderInfo && (order.loaderActualTime || order.actualTime)) {
     const lTime = order.loaderActualTime || order.actualTime;
@@ -1162,8 +1139,6 @@ infoBox.innerHTML = '';
 document.getElementById('payment-modal').classList.add('show');
 }
 
-
-
 async function confirmPayment() {
 const paymentType = document.getElementById('payment-type').value;
 if (!paymentType) { showToast('Выберите тип оплаты'); return; }
@@ -1175,8 +1150,6 @@ if (order.status === 'finished' || order.status === 'vehicle_done') {
 newStatus = 'completed';
 }
 
-// 🔽 ПЕРЕСЧЁТ СУММЫ с учётом доп услуг и грузчиков
-// Машина
 const base = order.vehicleBase || 1200;
 const half = order.vehicleHalf || 600;
 const vTime = order.vehicleActualTime || order.actualTime;
@@ -1198,7 +1171,6 @@ vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehi
 } else {
     vehicleCost = base;
 }
-// Грузчики
 let loaderCostClient = 0;
 if (order.loaderInfo && (order.loaderActualTime || order.actualTime)) {
     const lTime = order.loaderActualTime || order.actualTime;
@@ -1212,13 +1184,11 @@ if (order.loaderInfo && (order.loaderActualTime || order.actualTime)) {
         ) * order.loaderInfo.count;
     }
 }
-// Доп услуги
 let extras = 0;
 if (order.extraServices) {
     extras = (order.extraServices.expedition?.cost || 0) + (order.extraServices.documents?.cost || 0);
 }
 
-// 🔽 Записываем новую цену и сохраняем в базу
 const newPrice = vehicleCost + loaderCostClient + extras;
 const updatePayload = {
     payment_type: paymentType,
@@ -1234,7 +1204,6 @@ if (error) throw error;
 closeModal('payment-modal');
 showToast('✅ Оплата подтверждена');
 await loadOrders();
-// 🔽 НОВОЕ: Для "Вывоз мусора" открываем окно ввода ТБО
 if (order && order.category === 'trash') {
 openTboModalDriver(order.id);
 }
@@ -1372,8 +1341,6 @@ function openDocuments() {
     document.getElementById('documents-modal').classList.add('show');
 }
 
-
-
 async function confirmExpedition() {
     const hours = parseInt(document.getElementById('expedition-hours').value) || 0;
     const minutes = parseInt(document.getElementById('expedition-minutes').value) || 0;
@@ -1387,7 +1354,6 @@ async function confirmExpedition() {
     await saveExtraService('expedition', pendingExpedition, orderIdToUse);
     closeModal('expedition-modal');
     closeModal('payment-modal');
-    // 🔽 Возвращаемся в окно с тремя кнопками, а не в оплату
     finishChoiceOrderId = orderIdToUse;
     openFinishChoiceModal(orderIdToUse);
 }
@@ -1396,7 +1362,6 @@ async function confirmDocuments() {
     let hours = parseInt(document.getElementById('documents-hours').value) || 0;
     const minutes = parseInt(document.getElementById('documents-minutes').value) || 0;
     let totalHours = hours + minutes / 60;
-    // 🔽 Страховка: если пользователь ничего не выбрал — считаем как 1 час
     if (totalHours <= 0) {
         hours = 1;
         totalHours = 1;
@@ -1410,7 +1375,6 @@ async function confirmDocuments() {
     await saveExtraService('documents', pendingDocuments, orderIdToUse);
     closeModal('documents-modal');
     closeModal('payment-modal');
-    // 🔽 Возвращаемся в окно с тремя кнопками, а не в оплату
     finishChoiceOrderId = orderIdToUse;
     openFinishChoiceModal(orderIdToUse);
 }
@@ -1433,11 +1397,10 @@ async function saveExtraService(type, data, orderId) {
     showToast(`✅ ${type === 'expedition' ? 'Экспедирование' : 'Документы'}: +${data.cost}₽`);
     await loadOrders();
 }
+
 function openLoaderFinishModal(id) {
-    console.log('openLoaderFinishModal вызван с id:', id);
     loaderFinishOrderId = id;
     const order = orders.find(o => o.id === id);
-    console.log('Найдена заявка:', order);
     const infoEl = document.getElementById('loader-finish-info');
     if (!order) {
         showToast('❌ Заявка не найдена');
@@ -1464,7 +1427,6 @@ function openLoaderFinishModal(id) {
         infoEl.innerHTML = `⚠️ Время начала не зафиксировано. Введите вручную.`;
     }
     const modalEl = document.getElementById('loader-finish-modal');
-    console.log('Модалка loader-finish-modal:', modalEl);
     if (modalEl) modalEl.classList.add('show');
 }
 
@@ -1501,14 +1463,13 @@ console.error('Ошибка завершения грузчиков:', e);
 showToast('❌ Ошибка сохранения');
 }
 }
-// ========== ФУНКЦИИ ТБО ДЛЯ ВОДИТЕЛЯ ==========
+
 function openTboModalDriver(id) {
 const order = orders.find(o => o.id === id);
 if (!order) return;
 tboOrderId = id;
 const vtype = getVehicleType(order.vehicleBase);
 const driverLoaderPay = driverGetTrashDriverLoaderPay(vtype);
-// 🔽 startH объявляем ДО вызова driverCalcTrashVehicle
 const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
 const vTime = order.vehicleActualTime || order.actualTime;
 const vHrs = vTime ? (parseInt(vTime.hours) || 0) : 0;
@@ -1516,7 +1477,6 @@ const vMin = vTime ? (parseInt(vTime.minutes) || 0) : 0;
 const vTm = vHrs * 60 + vMin;
 const district = order.districtSurcharge || 0;
 const fixBase = driverGetTrashFix(vtype);
-// 🔽 Передаём startH
 const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH);
 let loaderCommission = 0;
 if (order.loaderInfo) {
@@ -1551,7 +1511,6 @@ if (!order) return;
 const tboAmount = parseInt(document.getElementById('tbo-amount').value) || 0;
 const vtype = getVehicleType(order.vehicleBase);
 const driverLoaderPay = driverGetTrashDriverLoaderPay(vtype);
-// 🔽 startH объявляем ДО вызова driverCalcTrashVehicle
 const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
 const vTime = order.vehicleActualTime || order.actualTime;
 const vHrs = vTime ? (parseInt(vTime.hours) || 0) : 0;
@@ -1559,7 +1518,6 @@ const vMin = vTime ? (parseInt(vTime.minutes) || 0) : 0;
 const vTm = vHrs * 60 + vMin;
 const district = order.districtSurcharge || 0;
 const fixBase = driverGetTrashFix(vtype);
-// 🔽 Передаём startH
 const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH);
 let loaderCommission = 0;
 if (order.loaderInfo) {
