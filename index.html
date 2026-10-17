@@ -539,10 +539,7 @@ extraServices: (() => { try { return typeof o.extra_services === 'string' ? JSON
 vehicleExtraCost: o.vehicle_extra_cost || 0,
 driverExtraIncome: o.driver_extra_income || 0,
 vehicleStartTime: o.vehicle_start_time || null,
-loaderStartTime: (o.loader_start_time && 
-                  o.loader_start_time !== 'null' && 
-                  o.loader_start_time !== 'undefined' && 
-                  o.loader_start_time !== '') ? o.loader_start_time : null,
+loaderStartTime: (o.loader_start_time && o.loader_start_time !== 'null' && o.loader_start_time !== 'undefined' && o.loader_start_time !== '') ? o.loader_start_time : null,
 vehicleActualTime: typeof o.vehicle_actual_time === 'string' ? JSON.parse(o.vehicle_actual_time) : (o.vehicle_actual_time || null),
 loaderActualTime: typeof o.loader_actual_time === 'string' ? JSON.parse(o.loader_actual_time) : (o.loader_actual_time || null),
 isVehicleFinished: o.is_vehicle_finished || false,
@@ -909,7 +906,14 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-tran
 <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
 }
 const hasLoaders = !!o.loaderInfo;
-const loadersStarted = hasLoaders && o.loaderStartTime && o.loaderStartTime !== 'null' && o.loaderStartTime !== '';
+// 🔽 ЖЁСТКАЯ ПРОВЕРКА: время должно быть валидной датой
+const hasValidLoaderStart = o.loaderStartTime && 
+                            o.loaderStartTime !== 'null' && 
+                            o.loaderStartTime !== 'undefined' && 
+                            o.loaderStartTime !== '' &&
+                            !isNaN(new Date(o.loaderStartTime).getTime());
+
+const loadersStarted = hasLoaders && hasValidLoaderStart;
 const loadersFinished = o.isLoaderFinished === true;
 
 if (hasLoaders && loadersStarted && !loadersFinished) {
