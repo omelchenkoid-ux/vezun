@@ -812,13 +812,18 @@ container.innerHTML = orders.map(o => renderOrderCard(o)).join('');
 
 
 orders.forEach(o => {
-if (o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished) {
-startTimer(o.id, o.vehicleStartTime);
-}
-// Таймер грузчиков запускаем ТОЛЬКО если loaderStartTime реально существует
-if (o.loaderInfo && o.loaderStartTime != null && o.loaderStartTime !== 'null' && !o.isLoaderFinished) {
-startLoaderTimer(o.id, o.loaderStartTime);
-}
+    if (o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished) {
+        startTimer(o.id, o.vehicleStartTime);
+    }
+    // Строгая проверка на валидность времени начала грузчиков
+    const hasValidLoaderStart = o.loaderStartTime && 
+                                o.loaderStartTime !== 'null' && 
+                                o.loaderStartTime !== 'undefined' && 
+                                !isNaN(new Date(o.loaderStartTime).getTime());
+                                
+    if (o.loaderInfo && hasValidLoaderStart && !o.isLoaderFinished) {
+        startLoaderTimer(o.id, o.loaderStartTime);
+    }
 });
 
 }
@@ -923,14 +928,11 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-tran
 
 // Если есть грузчики, но они ещё НЕ стартовали — показываем кнопку "Грузчики начали"
 if (hasLoaders && !loadersStarted && !loadersFinished) {
-buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
-}
-
-// Если есть грузчики, и они ещё не начали — кнопку "Закончил" НЕ показываем
-// (сначала нужно нажать "Грузчики начали")
-if (!hasLoaders || loadersStarted || loadersFinished) {
-buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
-}
+    if (isStartingLoaders) {
+        buttons.push(`<button class="action-btn" style="background:#cbd5e1; color:#fff; margin-bottom:8px;" disabled>⏳ Запуск...</button>`);
+    } else {
+        buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
+    }
 }
 
 
@@ -994,14 +996,12 @@ const order = orders.find(o => o.id === id);
 if (!order) return;
 const now = new Date().toISOString();
 const extra = { vehicle_start_time: now };
-// Если есть грузчики И пользователь выбрал "вместе" — стартуем таймер грузчиков
 if (order.loaderInfo && loadersToo) {
 extra.loader_start_time = now;
 } else {
-// Если выбрали "только машина" — ЯВНО сбрасываем время начала грузчиков в null,
-// чтобы гарантировать, что таймер не запустится
-extra.loader_start_time = null;
+extra.loader_start_time = null; // Жестко обнуляем
 }
+// Вызываем updateOrderStatus, который сделает запрос в Supabase
 await updateOrderStatus(id, 'started', extra);
 }
 
@@ -1021,7 +1021,10 @@ async function confirmStartChoice(loadersToo) {
 }
 
 // ============ ЗАПУСК ГРУЗЧИКОВ ПОЗЖЕ ============
+let isStartingLoaders = false; // Глобальный флаг (добавьте его в начало скрипта, рядом с let currentTab = 'today')
+
 async function startLoadersLater(id) {
+    if (isStartingLoaders) return; // Защита от двойного клика
     const order = orders.find(o => o.id === id);
     if (!order) return;
     if (!order.loaderInfo) {
@@ -1032,18 +1035,27 @@ async function startLoadersLater(id) {
         showToast('⚠️ Грузчики уже начали работу');
         return;
     }
+    
+    isStartingLoaders = true;
     const now = new Date().toISOString();
+    
     try {
+        // Ждем выполнения запроса
         const { error } = await sb.from('orders').update({
             loader_start_time: now,
             updated_at: new Date().toISOString()
         }).eq('id', id);
+        
         if (error) throw error;
+        
         showToast('Таймер грузчиков запущен');
         await loadOrders();
     } catch (e) {
         console.error('Ошибка запуска грузчиков:', e);
         showToast('❌ Ошибка сохранения');
+    } finally {
+        // Ждем 1 секунду, прежде чем разрешить следующий клик
+        setTimeout(() => { isStartingLoaders = false; }, 1000);
     }
 }
 
