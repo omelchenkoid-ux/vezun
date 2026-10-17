@@ -335,6 +335,24 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="start-choice-modal">
+<div class="modal" style="max-width:90%; padding:20px;">
+<h3>▶ Как начали работу?</h3>
+<div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+<button onclick="confirmStartChoice(true)" style="padding:14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px; text-align:left;">
+🚗🚶 Начали вместе (машина + грузчики)
+<div style="font-size:11px; font-weight:400; opacity:0.9; margin-top:3px;">Оба таймера стартуют одновременно</div>
+</button>
+<button onclick="confirmStartChoice(false)" style="padding:14px; background:#f59e0b; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px; text-align:left;">
+🚗 Начал только машину
+<div style="font-size:11px; font-weight:400; opacity:0.9; margin-top:3px;">Грузчики начнут позже (кнопка появится в заявке)</div>
+</button>
+</div>
+<button onclick="closeModal('start-choice-modal')" style="width:100%; margin-top:12px; padding:10px; background:#f3f4f6; color:#374151; border:none; border-radius:6px; font-weight:500;">
+Отмена
+</button>
+</div>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 
@@ -871,22 +889,33 @@ else if (o.status === 'seen') {
 buttons.push(`<button class="action-btn primary" onclick="markArrived(${o.id})">📍 На месте</button>`);
 }
 else if (o.status === 'arrived') {
-buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id})">▶ Начал работу</button>`);
+// Если в заявке есть грузчики — даём выбор (вместе или только машина)
+if (o.loaderInfo) {
+buttons.push(`<button class="action-btn primary" onclick="openStartChoiceModal(${o.id})">▶ Начал работу</button>`);
+} else {
+// Грузчиков нет — стартуем как раньше (только машина)
+buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id}, true)">▶ Начал работу</button>`);
+}
 }
 else if (o.status === 'started') {
+// Таймер машины — всегда, если стартовала
 if (o.vehicleStartTime && !o.isVehicleFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">🚗 Машина</div>
 <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
 }
+
+// Таймер грузчиков — если уже стартовали
 if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;margin-bottom:2px">👥 Грузчики</div>
 <div class="timer loader" id="loader-timer-${o.id}">00:00:00</div>`);
 }
-if (o.loaderInfo) {
-    buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
-} else {
-    buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
+
+// Если есть грузчики, но они ещё не стартовали — показываем кнопку "Грузчики начали"
+if (o.loaderInfo && !o.loaderStartTime && !o.isLoaderFinished) {
+buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
 }
+
+buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
 }
 else if (o.status === 'vehicle_done') {
 if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
@@ -943,18 +972,59 @@ showToast('Ошибка обновления статуса');
 function markSeen(id) { updateOrderStatus(id, 'seen'); }
 function markArrived(id) { updateOrderStatus(id, 'arrived'); }
 
-async function markStarted(id) {
+async function markStarted(id, loadersToo = true) {
 const order = orders.find(o => o.id === id);
 if (!order) return;
 const now = new Date().toISOString();
 const extra = { vehicle_start_time: now };
-if (order.loaderInfo && !order.loaderStartTime && !order.isLoaderFinished) {
+// Если есть грузчики И пользователь выбрал "вместе" — стартуем таймер грузчиков
+if (order.loaderInfo && !order.loaderStartTime && !order.isLoaderFinished && loadersToo) {
 extra.loader_start_time = now;
 }
 await updateOrderStatus(id, 'started', extra);
 }
 
+// ============ ВЫБОР "ВМЕСТЕ ИЛИ ТОЛЬКО МАШИНА" ============
+let startChoiceOrderId = null;
 
+function openStartChoiceModal(id) {
+    startChoiceOrderId = id;
+    document.getElementById('start-choice-modal').classList.add('show');
+}
+
+async function confirmStartChoice(loadersToo) {
+    const id = startChoiceOrderId;
+    closeModal('start-choice-modal');
+    if (!id) return;
+    await markStarted(id, loadersToo);
+}
+
+// ============ ЗАПУСК ГРУЗЧИКОВ ПОЗЖЕ ============
+async function startLoadersLater(id) {
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+    if (!order.loaderInfo) {
+        showToast('⚠️ В этой заявке нет грузчиков');
+        return;
+    }
+    if (order.loaderStartTime) {
+        showToast('⚠️ Грузчики уже начали работу');
+        return;
+    }
+    const now = new Date().toISOString();
+    try {
+        const { error } = await sb.from('orders').update({
+            loader_start_time: now,
+            updated_at: new Date().toISOString()
+        }).eq('id', id);
+        if (error) throw error;
+        showToast('Таймер грузчиков запущен');
+        await loadOrders();
+    } catch (e) {
+        console.error('Ошибка запуска грузчиков:', e);
+        showToast('❌ Ошибка сохранения');
+    }
+}
 
 function openPaymentModal(id) {
     if (!id) {
