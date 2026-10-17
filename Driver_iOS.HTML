@@ -340,11 +340,11 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 <h3>▶ Как начали работу?</h3>
 <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
 <button onclick="confirmStartChoice(true)" style="padding:14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px; text-align:left;">
-🚗🚶 Начали вместе (машина + грузчики)
+🚗🚶 Начали вместе (машина и грузчики)
 <div style="font-size:11px; font-weight:400; opacity:0.9; margin-top:3px;">Оба таймера стартуют одновременно</div>
 </button>
 <button onclick="confirmStartChoice(false)" style="padding:14px; background:#f59e0b; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px; text-align:left;">
-🚗 Начал только машину
+🚗 Начал работу только на машине
 <div style="font-size:11px; font-weight:400; opacity:0.9; margin-top:3px;">Грузчики начнут позже (кнопка появится в заявке)</div>
 </button>
 </div>
@@ -353,6 +353,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 </button>
 </div>
 </div>
+
 <div class="toast" id="toast"></div>
 <script>
 
@@ -809,14 +810,17 @@ return;
 }
 container.innerHTML = orders.map(o => renderOrderCard(o)).join('');
 
+
 orders.forEach(o => {
 if (o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished) {
 startTimer(o.id, o.vehicleStartTime);
 }
-if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
+// Таймер грузчиков запускаем ТОЛЬКО если loaderStartTime не null и не пустая строка
+if (o.loaderInfo && o.loaderStartTime && o.loaderStartTime !== 'null' && !o.isLoaderFinished) {
 startLoaderTimer(o.id, o.loaderStartTime);
 }
 });
+
 }
 
 function renderOrderCard(o) {
@@ -978,8 +982,12 @@ if (!order) return;
 const now = new Date().toISOString();
 const extra = { vehicle_start_time: now };
 // Если есть грузчики И пользователь выбрал "вместе" — стартуем таймер грузчиков
-if (order.loaderInfo && !order.loaderStartTime && !order.isLoaderFinished && loadersToo) {
+if (order.loaderInfo && loadersToo) {
 extra.loader_start_time = now;
+} else {
+// Если выбрали "только машина" — ЯВНО сбрасываем время начала грузчиков в null,
+// чтобы гарантировать, что таймер не запустится
+extra.loader_start_time = null;
 }
 await updateOrderStatus(id, 'started', extra);
 }
