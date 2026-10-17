@@ -811,10 +811,11 @@ orders.forEach(o => {
         startTimer(o.id, o.vehicleStartTime);
     }
     
-    // Запускаем таймер грузчиков ТОЛЬКО если в базе есть реальное время (не null, не строка 'null')
+    // Запускаем таймер грузчиков ТОЛЬКО если есть реальное время (не пустая строка, не null)
     const hasValidLoaderStart = o.loaderStartTime && 
                                 o.loaderStartTime !== 'null' && 
                                 o.loaderStartTime !== 'undefined' && 
+                                o.loaderStartTime !== '' && // 🔽 добавлена проверка на пустую строку
                                 !isNaN(new Date(o.loaderStartTime).getTime());
                                 
     if (o.loaderInfo && hasValidLoaderStart && !o.isLoaderFinished) {
@@ -905,7 +906,7 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-tran
 <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
 }
 const hasLoaders = !!o.loaderInfo;
-const loadersStarted = hasLoaders && o.loaderStartTime != null && o.loaderStartTime !== 'null';
+const loadersStarted = hasLoaders && o.loaderStartTime && o.loaderStartTime !== 'null' && o.loaderStartTime !== '';
 const loadersFinished = o.isLoaderFinished === true;
 
 if (hasLoaders && loadersStarted && !loadersFinished) {
@@ -988,7 +989,7 @@ const extra = { vehicle_start_time: now };
 if (order.loaderInfo && loadersToo) {
 extra.loader_start_time = now;
 } else {
-extra.loader_start_time = null; // Жесткий сброс
+extra.loader_start_time = ''; // 🔽 Отправляем ПУСТУЮ СТРОКУ вместо null
 }
 await updateOrderStatus(id, 'started', extra);
 }
