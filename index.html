@@ -945,16 +945,18 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-tran
 }
 
 if (hasLoaders && !loadersStarted && !loadersFinished) {
+    // 🔽 ИСПРАВЛЕНИЕ: Показываем кнопку "Грузчики начали" ТОЛЬКО если диспетчер их еще не запускал.
+    // Проверяем, есть ли уже время старта грузчиков.
     if (isStartingLoaders) {
         buttons.push(`<button class="action-btn" style="background:#cbd5e1; color:#fff; margin-bottom:8px;" disabled>⏳ Запуск...</button>`);
-    } else {
+    } else if (!o.loaderStartTime) { // Если времени нет — показываем кнопку
         buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
     }
 }
 
-// Кнопка "Закончил" появляется только если грузчики УЖЕ начали (или их нет)
-if (!hasLoaders || loadersStarted || loadersFinished) {
-buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
+// 🔽 ИСПРАВЛЕНИЕ: Кнопка "Закончил" появляется, если грузчики начали (сами или диспетчером) или их нет
+if (!hasLoaders || loadersStarted || loadersFinished || o.loaderStartTime) {
+    buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
 }
 }
 else if (o.status === 'vehicle_done') {
@@ -1018,11 +1020,24 @@ async function markStarted(id, loadersToo = true) {
   if (!order) return;
   const now = new Date().toISOString();
   const extra = { vehicle_start_time: now };
+
+  // 🔽 ИСПРАВЛЕНИЕ: Если диспетчер уже запустил грузчиков (время есть),
+  // мы НЕ ТРОГАЕМ их время, даже если водитель нажал "Только машину".
+  const hasValidLoaderStart = order.loaderStartTime && 
+                              order.loaderStartTime !== 'null' && 
+                              order.loaderStartTime !== 'undefined' && 
+                              order.loaderStartTime !== '' &&
+                              !isNaN(new Date(order.loaderStartTime).getTime());
+
   if (order.loaderInfo && loadersToo) {
     extra.loader_start_time = now;
+  } else if (hasValidLoaderStart) {
+    // Оставляем старое время грузчиков, ничего не пишем в это поле
+    // (Supabase не обновит его, если его нет в объекте extra)
   } else {
-    extra.loader_start_time = null;   // ← БЫЛО '' СТАЛО null
+    extra.loader_start_time = null; 
   }
+  
   await updateOrderStatus(id, 'started', extra);
 }
 
