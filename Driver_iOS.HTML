@@ -815,8 +815,8 @@ orders.forEach(o => {
 if (o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished) {
 startTimer(o.id, o.vehicleStartTime);
 }
-// Таймер грузчиков запускаем ТОЛЬКО если loaderStartTime не null и не пустая строка
-if (o.loaderInfo && o.loaderStartTime && o.loaderStartTime !== 'null' && !o.isLoaderFinished) {
+// Таймер грузчиков запускаем ТОЛЬКО если loaderStartTime реально существует
+if (o.loaderInfo && o.loaderStartTime != null && o.loaderStartTime !== 'null' && !o.isLoaderFinished) {
 startLoaderTimer(o.id, o.loaderStartTime);
 }
 });
@@ -901,6 +901,8 @@ buttons.push(`<button class="action-btn primary" onclick="openStartChoiceModal($
 buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id}, true)">▶ Начал работу</button>`);
 }
 }
+
+
 else if (o.status === 'started') {
 // Таймер машины — всегда, если стартовала
 if (o.vehicleStartTime && !o.isVehicleFinished) {
@@ -908,19 +910,30 @@ buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-tran
 <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
 }
 
-// Таймер грузчиков — если уже стартовали
-if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
+// Проверяем, есть ли грузчики в заявке
+const hasLoaders = !!o.loaderInfo;
+const loadersStarted = hasLoaders && o.loaderStartTime != null && o.loaderStartTime !== 'null';
+const loadersFinished = o.isLoaderFinished === true;
+
+// Таймер грузчиков — если уже стартовали и ещё не закончили
+if (hasLoaders && loadersStarted && !loadersFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;margin-bottom:2px">👥 Грузчики</div>
 <div class="timer loader" id="loader-timer-${o.id}">00:00:00</div>`);
 }
 
-// Если есть грузчики, но они ещё не стартовали — показываем кнопку "Грузчики начали"
-if (o.loaderInfo && !o.loaderStartTime && !o.isLoaderFinished) {
+// Если есть грузчики, но они ещё НЕ стартовали — показываем кнопку "Грузчики начали"
+if (hasLoaders && !loadersStarted && !loadersFinished) {
 buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
 }
 
+// Если есть грузчики, и они ещё не начали — кнопку "Закончил" НЕ показываем
+// (сначала нужно нажать "Грузчики начали")
+if (!hasLoaders || loadersStarted || loadersFinished) {
 buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
 }
+}
+
+
 else if (o.status === 'vehicle_done') {
 if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">👥 Грузчики (продолжают работу)</div>
