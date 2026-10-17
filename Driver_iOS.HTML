@@ -560,15 +560,26 @@ showToast('Ошибка загрузки заявок');
 // ============ REALTIME ============
 function subscribeToOrders() {
     if (!sb) return;
-    // 🔽 ОТКЛЮЧЕНО: Realtime вызывает двойную загрузку и ломает таймеры
-    /*
-    realtimeSubscription = sb.channel('driver-orders-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
-        await loadOrders();
-    })
-    .subscribe();
-    */
-    console.log('Realtime ОТКЛЮЧЕН в драйвере, чтобы не было гонки данных');
+    
+    // Убираем старую подписку, если она была
+    if (realtimeSubscription) {
+        sb.removeChannel(realtimeSubscription);
+    }
+
+    // Создаем новую с уникальным именем и статусом
+    realtimeSubscription = sb.channel('driver-orders-changes-v2-' + Date.now())
+    .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'orders' }, 
+        (payload) => {
+            console.log('🔥 Realtime прилетел:', payload.eventType, payload.new?.id);
+            // Принудительно перезагружаем заявки
+            loadOrders();
+        }
+    )
+    .subscribe((status) => {
+        console.log('Статус подписки:', status);
+    });
 }
 
 // ============ РАСЧЁТ ============
@@ -1588,7 +1599,25 @@ document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
 document.getElementById('tab-' + tab).classList.add('active');
 loadOrders();
 }
+// 🔽 БУДИЛЬНИК: когда водитель открывает экран телефона или вкладку,
+// мы принудительно обновляем список и переподключаем Realtime
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        console.log('Телефон проснулся — обновляем заявки');
+        if (currentDriver) {
+            loadOrders();
+            subscribeToOrders(); // Переподключаем на всякий случай
+        }
+    }
+});
 
+// 🔽 Также обновляем при возврате фокуса на окно
+window.addEventListener('focus', () => {
+    if (currentDriver) {
+        console.log('Фокус на окне — обновляем');
+        loadOrders();
+    }
+});
 // ============ СТАРТ ============
 document.addEventListener('DOMContentLoaded', () => {
 if (window.location.protocol === 'file:') return;
