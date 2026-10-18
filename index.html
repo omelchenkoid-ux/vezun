@@ -523,7 +523,8 @@ driver: o.driver, vehicleText: o.vehicle_text,
 vehicleBase: o.vehicle_base, vehicleHalf: o.vehicle_half,
 price: o.price, comment: o.comment, timeLabel: o.time_label,
 orderDate: o.order_date, category: o.category,
-intercityData: o.intercity_data,
+intercityData: (o.intercity_data && o.intercity_data.type) ? o.intercity_data : null,
+trashIntercityData: (o.intercity_data && o.intercity_data.trashPlace) ? o.intercity_data.trashPlace : null,
 status: o.status, loaderInfo: o.loader_info,
 actualTime: o.actual_time,
 timeHour: o.time_hour, timeMin: o.time_min,
@@ -610,13 +611,18 @@ const extraHalfHours = Math.ceil(extraMin / 30);
 const firstHourCost = base + surcharge + districtSurcharge;
 return firstHourCost + (extraHalfHours * halfRate);
 }
-function driverCalcTrashVehicle(fixBase, halfRate, totalMin, districtSurcharge = 0, startHour = 12) {
+function driverCalcTrashVehicle(fixBase, halfRate, totalMin, districtSurcharge = 0, startHour = 12, intercitySurcharge = 0) {
 const surcharge = driverGetSurcharge(startHour);
-if (totalMin <= 0) return fixBase + surcharge + districtSurcharge;
-if (totalMin <= 60) return fixBase + surcharge + districtSurcharge;
+const base = fixBase + surcharge + districtSurcharge + (intercitySurcharge || 0);
+if (totalMin <= 0) return base;
+if (totalMin <= 60) return base;
 const extraMin = totalMin - 60;
 const extraHalfHours = Math.ceil(extraMin / 30);
-return fixBase + surcharge + districtSurcharge + extraHalfHours * halfRate;
+return base + extraHalfHours * halfRate;
+}
+// 🔽 НОВОЕ: получить надбавку за межгород для вывоза мусора из заявки
+function driverGetTrashIntercitySurcharge(o) {
+  return (o && o.trashIntercityData && o.trashIntercityData.surcharge) ? o.trashIntercityData.surcharge : 0;
 }
 function driverGetIntercityKmRate(vehicleType) {
 if (vehicleType === 'extended') return 33;
@@ -663,16 +669,20 @@ html += '<div class="calc-title">💰 Расчёт стоимости</div>';
 let vehicleCost = 0;
 let vehicleTimeLabel = `${vHrs}ч ${vMin}мин`;
 if (vTm > 0 || o.vehicleActualTime) {
+
 if (cat === 'trash') {
 const fixBase = driverGetTrashFix(vtype);
 const district = o.districtSurcharge || 0;
 const surcharge = driverGetSurcharge(startH);
-vehicleCost = driverCalcTrashVehicle(fixBase, half, vTm, district, startH);
+const trSur = driverGetTrashIntercitySurcharge(o);
+vehicleCost = driverCalcTrashVehicle(fixBase, half, vTm, district, startH, trSur);
 let parts = [`${vHrs}ч ${vMin}мин: вывоз мусора ${fixBase}₽`];
+if (trSur > 0 && o.trashIntercityData) parts.push(`🚚 межгород ${o.trashIntercityData.placeName} (${o.trashIntercityData.km}км) +${trSur}₽`);
 if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
 if (district > 0) parts.push(`📍 отдалёнка +${district}₽`);
 vehicleTimeLabel = parts.join(' · ');
 }
+
 else if (cat === 'intercity-km' && o.intercityData) {
 const icd = o.intercityData;
 const rate = driverGetIntercityKmRate(vtype);
@@ -720,6 +730,10 @@ vehicleTimeLabel = parts.join(' · ');
 }
 
 html += `<div class="calc-row"><span>🚗 Машина (${vehicleTimeLabel}):</span><span>${vehicleCost.toLocaleString('ru-RU')} ₽</span></div>`;
+// 🔽 НОВОЕ: отдельная строка про межгород (для наглядности)
+if (cat === 'trash' && o.trashIntercityData && o.trashIntercityData.surcharge > 0) {
+    html += `<div class="calc-row" style="color:#d97706"><span>🚚 Межгород: ${o.trashIntercityData.placeName} (${o.trashIntercityData.km}км)</span><span>+${o.trashIntercityData.surcharge.toLocaleString('ru-RU')} ₽</span></div>`;
+}
 }
 
 let loaderCostTotal = 0;
@@ -864,6 +878,10 @@ if (surcharge > 0 && o.category !== 'loaders-only' && o.category !== 'intercity-
 }
 if (o.category !== 'loaders-only' && o.category !== 'intercity-km' && (o.districtSurcharge || 0) > 0) {
     detailsHtml += `<br>📍 Отдалёнка: +${o.districtSurcharge}₽`;
+}
+// 🔽 НОВОЕ: межгород для вывоза мусора
+if (o.category === 'trash' && o.trashIntercityData && o.trashIntercityData.surcharge > 0) {
+    detailsHtml += `<br>🚚 Межгород: ${o.trashIntercityData.placeName} (${o.trashIntercityData.km}км) +${o.trashIntercityData.surcharge}₽`;
 }
 detailsHtml += `</div>`;
 
@@ -1130,9 +1148,13 @@ const vTm = vTime ? ((parseInt(vTime.hours)||0) * 60 + (parseInt(vTime.minutes)|
 const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
 let vehicleCost = 0;
 if (vTm > 0) {
+
 if (order.category === 'trash') {
-vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0, startH);
+const trSur = driverGetTrashIntercitySurcharge(order);
+vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0, startH, trSur);
 } else if (order.category === 'intercity-km' && order.intercityData) {
+
+
 vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate);
 if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
 } else if (order.category === 'intercity-place' && order.intercityData) {
@@ -1207,9 +1229,13 @@ const vTm = vTime ? ((parseInt(vTime.hours)||0) * 60 + (parseInt(vTime.minutes)|
 const startH = order.startHour != null ? order.startHour : (order.timeHour != null ? parseInt(order.timeHour) : 12);
 let vehicleCost = 0;
 if (vTm > 0) {
-    if (order.category === 'trash') {
-vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0, startH);
+
+  if (order.category === 'trash') {
+const trSur = driverGetTrashIntercitySurcharge(order);
+vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehicleBase)), half, vTm, order.districtSurcharge || 0, startH, trSur);
 } else if (order.category === 'intercity-km' && order.intercityData) {
+
+
         vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate);
         if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
     } else if (order.category === 'intercity-place' && order.intercityData) {
@@ -1526,8 +1552,13 @@ const vHrs = vTime ? (parseInt(vTime.hours) || 0) : 0;
 const vMin = vTime ? (parseInt(vTime.minutes) || 0) : 0;
 const vTm = vHrs * 60 + vMin;
 const district = order.districtSurcharge || 0;
+
+
 const fixBase = driverGetTrashFix(vtype);
-const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH);
+const trSur = driverGetTrashIntercitySurcharge(order);
+const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH, trSur);
+
+
 let loaderCommission = 0;
 if (order.loaderInfo) {
 const lTime = order.loaderActualTime || order.actualTime;
@@ -1567,8 +1598,11 @@ const vHrs = vTime ? (parseInt(vTime.hours) || 0) : 0;
 const vMin = vTime ? (parseInt(vTime.minutes) || 0) : 0;
 const vTm = vHrs * 60 + vMin;
 const district = order.districtSurcharge || 0;
+
 const fixBase = driverGetTrashFix(vtype);
-const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH);
+const trSur = driverGetTrashIntercitySurcharge(order);
+const vehicleCost = driverCalcTrashVehicle(fixBase, order.vehicleHalf || 600, vTm, district, startH, trSur);
+
 let loaderCommission = 0;
 if (order.loaderInfo) {
 const lTime = order.loaderActualTime || order.actualTime;
