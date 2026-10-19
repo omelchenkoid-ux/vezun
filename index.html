@@ -182,24 +182,12 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 </div>
 </div>
 
+
 <div class="modal-overlay" id="finish-choice-modal">
 <div class="modal" style="max-width:90%; padding:20px;">
 <h3>🚗 Что делаем?</h3>
-<div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
-
-<button onclick="openExtraServices()" style="padding:14px; background:#8b5cf6; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px; text-align:left;">
-🛎 Доп услуги водителя
-<div style="font-size:11px; font-weight:400; opacity:0.9; margin-top:3px;">Экспедирование / Передача документов</div>
-</button>
-
-<button onclick="confirmFinishChoice(true, true)" style="padding:14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px;">
-✅ ДА, всё закончили
-</button>
-
-<button onclick="confirmFinishChoice(false, false)" style="padding:14px; background:#f59e0b; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px;">
-📦 Нет, грузчики ещё работают
-</button>
-
+<div id="finish-choice-buttons" style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+<!-- Кнопки будут добавляться через JS -->
 </div>
 <button onclick="closeModal('finish-choice-modal')" style="width:100%; margin-top:12px; padding:10px; background:#f3f4f6; color:#374151; border:none; border-radius:6px; font-weight:500;">
 Отмена
@@ -1317,8 +1305,41 @@ showToast('Ошибка сохранения оплаты');
 }
 
 function openFinishChoiceModal(id) {
-finishChoiceOrderId = id;
-document.getElementById('finish-choice-modal').classList.add('show');
+    finishChoiceOrderId = id;
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+
+    const container = document.getElementById('finish-choice-buttons');
+    
+    // Кнопка "Доп услуги" (есть всегда)
+    let buttonsHtml = `
+    <button onclick="openExtraServices()" style="padding:14px; background:#8b5cf6; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px; text-align:left;">
+        🛎 Доп услуги водителя
+        <div style="font-size:11px; font-weight:400; opacity:0.9; margin-top:3px;">Экспедирование / Передача документов</div>
+    </button>`;
+
+    // Проверяем, есть ли грузчики в заказе
+    const hasLoaders = !!order.loaderInfo;
+
+    if (hasLoaders) {
+        // Если грузчики ЕСТЬ, показываем выбор: закончили всё или только машину
+        buttonsHtml += `
+        <button onclick="confirmFinishChoice(true, true)" style="padding:14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px;">
+            ✅ ДА, всё закончили (машина и грузчики)
+        </button>
+        <button onclick="confirmFinishChoice(false, false)" style="padding:14px; background:#f59e0b; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px;">
+            📦 Нет, грузчики ещё работают
+        </button>`;
+    } else {
+        // Если грузчиков НЕТ, показываем только одну кнопку завершения
+        buttonsHtml += `
+        <button onclick="confirmFinishChoice(true, true)" style="padding:14px; background:#10b981; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:15px;">
+            ✅ Закончил работу
+        </button>`;
+    }
+
+    container.innerHTML = buttonsHtml;
+    document.getElementById('finish-choice-modal').classList.add('show');
 }
 async function confirmFinishChoice(loadersToo, fromButton) {
 const orderId = finishChoiceOrderId;
