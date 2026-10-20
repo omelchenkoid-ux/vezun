@@ -635,7 +635,7 @@ if (hour === 22) return 200;
 return 700;
 }
 function driverCalcLoaderHourly(rate, startHour, totalMin, halfRate) {
-if (totalMin <= 0) return 0;
+// 🔽 ИСПРАВЛЕНИЕ: при 0 минут всё равно начисляем первый час (как у машины)
 const surcharge = driverGetLoaderSurcharge(startHour);
 if (totalMin <= 60) return rate + surcharge;
 const extraMin = totalMin - 63;
@@ -745,6 +745,7 @@ const count = o.loaderInfo.count || 1;
 const halfRate = o.loaderInfo.halfRate || Math.round(rate / 2);
 const payToLoader = rate - 100;
 const payHalfRate = halfRate - 50;
+// 🔽 ИСПРАВЛЕНИЕ: driverCalcLoaderHourly теперь сам обрабатывает lTm = 0 как 1 час
 loaderCostTotal = driverCalcLoaderHourly(rate, startH, lTm, halfRate) * count;
 loaderPayTotal = driverCalcLoaderHourly(payToLoader, startH, lTm, payHalfRate) * count;
 
@@ -1210,14 +1211,13 @@ let loaderCostClient = 0;
 if (order.loaderInfo && (order.loaderActualTime || order.actualTime)) {
     const lTime = order.loaderActualTime || order.actualTime;
     const lTm = (parseInt(lTime.hours) || 0) * 60 + (parseInt(lTime.minutes) || 0);
-    if (lTm > 0) {
-        loaderCostClient = driverCalcLoaderHourly(
-            order.loaderInfo.rate,
-            startH,
-            lTm,
-            order.loaderInfo.halfRate || Math.round(order.loaderInfo.rate / 2)
-        ) * order.loaderInfo.count;
-    }
+    // 🔽 ИСПРАВЛЕНИЕ: убрано условие lTm > 0 — при 0 минут считаем первый час
+    loaderCostClient = driverCalcLoaderHourly(
+        order.loaderInfo.rate,
+        startH,
+        lTm,
+        order.loaderInfo.halfRate || Math.round(order.loaderInfo.rate / 2)
+    ) * order.loaderInfo.count;
 }
 
 const totalToClient = vehicleCost + loaderCostClient + extras;
@@ -1282,14 +1282,13 @@ let loaderCostClient = 0;
 if (order.loaderInfo && (order.loaderActualTime || order.actualTime)) {
     const lTime = order.loaderActualTime || order.actualTime;
     const lTm = (parseInt(lTime.hours) || 0) * 60 + (parseInt(lTime.minutes) || 0);
-    if (lTm > 0) {
-        loaderCostClient = driverCalcLoaderHourly(
-            order.loaderInfo.rate,
-            startH,
-            lTm,
-            order.loaderInfo.halfRate || Math.round(order.loaderInfo.rate / 2)
-        ) * order.loaderInfo.count;
-    }
+    // 🔽 ИСПРАВЛЕНИЕ: убрано условие lTm > 0 — при 0 минут считаем первый час
+    loaderCostClient = driverCalcLoaderHourly(
+        order.loaderInfo.rate,
+        startH,
+        lTm,
+        order.loaderInfo.halfRate || Math.round(order.loaderInfo.rate / 2)
+    ) * order.loaderInfo.count;
 }
 let extras = 0;
 if (order.extraServices) {
