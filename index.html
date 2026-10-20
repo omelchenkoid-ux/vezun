@@ -720,7 +720,6 @@ if (surcharge > 0) parts.push(`🌙 вечер +${surcharge}₽`);
 if (district > 0) parts.push(`📍 отдалёнка +${district}₽`);
 vehicleTimeLabel = parts.join(' · ');
 }
-
 else {
 const district = o.districtSurcharge || 0;
 vehicleCost = driverCalcHourly(base, startH, vTm, district, half);
@@ -1176,11 +1175,17 @@ vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehi
 const district = order.districtSurcharge || 0;
 vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate) + district;
 if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
+
 } else if (order.category === 'intercity-place' && order.intercityData) {
 const district = order.districtSurcharge || 0;
+if (order.intercityData.fixed) {
+vehicleCost = order.intercityData.price + district; // фикс — без доплаты за время
+} else {
 if (vTm <= 60) vehicleCost = order.intercityData.price + district;
 else vehicleCost = order.intercityData.price + district + Math.ceil((vTm - 60) / 30) * half;
-} else {
+}
+}
+ else {
 vehicleCost = driverCalcHourly(base, startH, vTm, order.districtSurcharge || 0, half);
 }
 } else {
@@ -1257,11 +1262,17 @@ vehicleCost = driverCalcTrashVehicle(driverGetTrashFix(getVehicleType(order.vehi
 const district = order.districtSurcharge || 0;
 vehicleCost = base + (order.intercityData.distance * 2 * order.intercityData.rate) + district;
 if (vTm > 60) vehicleCost += Math.ceil((vTm - 60) / 30) * half;
+
 } else if (order.category === 'intercity-place' && order.intercityData) {
 const district = order.districtSurcharge || 0;
+if (order.intercityData.fixed) {
+vehicleCost = order.intercityData.price + district; // фикс — без доплаты за время
+} else {
 if (vTm <= 60) vehicleCost = order.intercityData.price + district;
 else vehicleCost = order.intercityData.price + district + Math.ceil((vTm - 60) / 30) * half;
-} else {
+}
+}
+ else {
 vehicleCost = driverCalcHourly(base, startH, vTm, order.districtSurcharge || 0, half);
 }
 } else {
