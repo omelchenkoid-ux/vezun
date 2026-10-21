@@ -166,18 +166,17 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 <h3>Способ оплаты</h3>
 <div id="payment-info-amount"></div>
 <!-- 🔽 Плашка о том, что расчет сделает диспетчер -->
-<div style="background:#f0fdf4; border:1px solid #a7f3d0; border-radius:8px; padding:10px; margin-bottom:12px; font-size:12px; color:#065f46;">
-  ℹ️ Итоговую сумму рассчитывает диспетчер. Вам нужно только зафиксировать, как клиент передал деньги.
+<div style="background:#fffbeb; border:1px dashed #f59e0b; border-radius:8px; padding:10px; margin-bottom:12px; font-size:12px; color:#92400e;">
+  ⚠️ <b>Расчёт сделает диспетчер.</b> Выберите способ оплаты и завершите заявку.
 </div>
 <div class="form-group">
 <label>Выберите тип оплаты</label>
 <select id="payment-type">
-    <option value="">Выберите...</option>
-    <option value="cash">💵 Наличные получил</option>
-    <option value="card">💳 На карту ИП</option>
-    <option value="car_done">🚗 Машина закончена, грузчики продолжают</option>
-    <option value="after_loaders">⏳ Оплата после грузчиков</option>
-    <option value="dispatcher">🧮 Оплата через диспетчера</option> <!-- 🔽 НОВЫЙ ПУНКТ -->
+<option value="">Выберите...</option>
+<option value="cash">💵 Наличные получил</option>
+<option value="card">💳 На карту ИП</option>
+<option value="car_done">🚗 Машина закончена, грузчики продолжают</option>
+<option value="after_loaders">⏳ Оплата после грузчиков</option>
 </select>
 </div>
 <div class="modal-actions">
@@ -396,6 +395,7 @@ let pendingExpedition = { hours: 0, cost: 0, driverIncome: 0 };
 let pendingServiceType = null;
 let pendingDocuments  = { hours: 0, cost: 0, driverIncome: 0 };
 let isStartingLoaders = false; // Защита от двойного клика
+let currentStepIndex = 0; // Индекс текущего адреса в маршруте
 
 // ============ УТИЛИТЫ ============
 function getLocalDate(offset = 0) {
@@ -414,14 +414,13 @@ const el = document.getElementById(id);
 if (el) el.classList.remove('show');
 }
 function getPaymentLabel(type) {
-    const labels = {
-        'cash': '💵 Наличные получил',
-        'card': '💳 На карту ИП',
-        'car_done': '🚗 Машина закончена, грузчики работают',
-        'after_loaders': '⏳ Оплата после грузчиков',
-        'dispatcher': '🧮 Оплата через диспетчера' // 🔽 НОВАЯ СТРОКА
-    };
-    return labels[type] || type;
+const labels = {
+'cash': '💵 Наличные получил',
+'card': '💳 На карту ИП',
+'car_done': '🚗 Машина закончена, грузчики работают',
+'after_loaders': '⏳ Оплата после грузчиков'
+};
+return labels[type] || type;
 }
 function getCategoryLabel(cat) {
 if (cat === 'city') return 'Грузоперевозки';
@@ -549,6 +548,7 @@ loaderActualTime: typeof o.loader_actual_time === 'string' ? JSON.parse(o.loader
 isVehicleFinished: o.is_vehicle_finished || false,
 isLoaderFinished: o.is_loader_finished || false,
 workEndTime: o.work_end_time || null,
+currentStep: o.current_step || 0,
 expanded: (expandedStates[o.id] !== undefined)
 ? expandedStates[o.id]
 : !['finished', 'completed', 'done'].includes(o.status)
@@ -969,41 +969,59 @@ else if (o.status === 'seen') {
         buttons.push(`<button class="action-btn primary" onclick="markStarted(${o.id}, false)">▶ Начал работу (только машина)</button>`);
     }
 }
+
+
 else if (o.status === 'started') {
-if (o.vehicleStartTime && !o.isVehicleFinished) {
-buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">🚗 Машина</div>
-<div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
-}
-const hasLoaders = !!o.loaderInfo;
-const hasValidLoaderStart = o.loaderStartTime && 
-                            o.loaderStartTime !== 'null' && 
-                            o.loaderStartTime !== 'undefined' && 
-                            o.loaderStartTime !== '' &&
-                            !isNaN(new Date(o.loaderStartTime).getTime());
+    // Таймер машины
+    if (o.vehicleStartTime && !o.isVehicleFinished) {
+        buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">🚗 Машина</div>
+        <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
+    }
 
-const loadersStarted = hasLoaders && hasValidLoaderStart;
-const loadersFinished = o.isLoaderFinished === true;
+    // Таймер грузчиков
+    const hasLoaders = !!o.loaderInfo;
+    const hasValidLoaderStart = o.loaderStartTime && 
+                                o.loaderStartTime !== 'null' && 
+                                o.loaderStartTime !== 'undefined' && 
+                                o.loaderStartTime !== '' &&
+                                !isNaN(new Date(o.loaderStartTime).getTime());
+    const loadersStarted = hasLoaders && hasValidLoaderStart;
+    const loadersFinished = o.isLoaderFinished === true;
 
-if (hasLoaders && loadersStarted && !loadersFinished) {
-buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;margin-bottom:2px">👥 Грузчики</div>
-<div class="timer loader" id="loader-timer-${o.id}">00:00:00</div>`);
-}
+    if (hasLoaders && loadersStarted && !loadersFinished) {
+        buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;margin-bottom:2px">👥 Грузчики</div>
+        <div class="timer loader" id="loader-timer-${o.id}">00:00:00</div>`);
+    }
 
-if (hasLoaders && !loadersStarted && !loadersFinished) {
-    // 🔽 ИСПРАВЛЕНИЕ: Показываем кнопку "Грузчики начали" ТОЛЬКО если диспетчер их еще не запускал.
-    // Проверяем, есть ли уже время старта грузчиков.
-    if (isStartingLoaders) {
-        buttons.push(`<button class="action-btn" style="background:#cbd5e1; color:#fff; margin-bottom:8px;" disabled>⏳ Запуск...</button>`);
-    } else if (!o.loaderStartTime) { // Если времени нет — показываем кнопку
-        buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
+    if (hasLoaders && !loadersStarted && !loadersFinished) {
+        if (isStartingLoaders) {
+            buttons.push(`<button class="action-btn" style="background:#cbd5e1; color:#fff; margin-bottom:8px;" disabled>⏳ Запуск...</button>`);
+        } else if (!o.loaderStartTime) { 
+            buttons.push(`<button class="action-btn" style="background:#8b5cf6; color:#fff; margin-bottom:8px;" onclick="startLoadersLater(${o.id})">👥 Грузчики начали</button>`);
+        }
+    }
+
+    // === НОВАЯ ЛОГИКА ЭТАПОВ МАРШРУТА ===
+    const totalSteps = (o.loadAddresses||[]).length + (o.unloadAddresses||[]).length;
+    const currentStep = o.currentStep || 0; // Берем из базы
+
+    if (currentStep < totalSteps) {
+        // Есть еще адреса. Показываем кнопку "Закончил текущий адрес"
+        let stepLabel = '';
+        const loadCount = (o.loadAddresses||[]).length;
+        if (currentStep < loadCount) {
+            stepLabel = `Загрузка ${currentStep + 1}`;
+        } else {
+            stepLabel = `Выгрузка ${currentStep - loadCount + 1}`;
+        }
+        
+        buttons.push(`<button class="action-btn success" onclick="finishCurrentStep(${o.id})">⏹ Закончил (${stepLabel})</button>`);
+    } else {
+        // Все адреса пройдены. Показываем кнопку полного завершения
+        buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})" style="background:#047857;">✅ Завершить заказ</button>`);
     }
 }
 
-// 🔽 ИСПРАВЛЕНИЕ: Кнопка "Закончил" появляется, если грузчики начали (сами или диспетчером) или их нет
-if (!hasLoaders || loadersStarted || loadersFinished || o.loaderStartTime) {
-    buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})">⏹ Закончил</button>`);
-}
-}
 else if (o.status === 'vehicle_done') {
 if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">👥 Грузчики (продолжают работу)</div>
@@ -1063,10 +1081,8 @@ async function markStarted(id, loadersToo = true) {
   const order = orders.find(o => o.id === id);
   if (!order) return;
   const now = new Date().toISOString();
-  const extra = { vehicle_start_time: now };
+  const extra = { vehicle_start_time: now, current_step: 0 }; // Начинаем с первого адреса
 
-  // 🔽 ИСПРАВЛЕНИЕ: Если диспетчер уже запустил грузчиков (время есть),
-  // мы НЕ ТРОГАЕМ их время, даже если водитель нажал "Только машину".
   const hasValidLoaderStart = order.loaderStartTime && 
                               order.loaderStartTime !== 'null' && 
                               order.loaderStartTime !== 'undefined' && 
@@ -1076,8 +1092,7 @@ async function markStarted(id, loadersToo = true) {
   if (order.loaderInfo && loadersToo) {
     extra.loader_start_time = now;
   } else if (hasValidLoaderStart) {
-    // Оставляем старое время грузчиков, ничего не пишем в это поле
-    // (Supabase не обновит его, если его нет в объекте extra)
+    // Оставляем старое время грузчиков
   } else {
     extra.loader_start_time = null; 
   }
@@ -1086,7 +1101,32 @@ async function markStarted(id, loadersToo = true) {
 }
 
 let startChoiceOrderId = null;
-
+async function finishCurrentStep(id) {
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+    
+    const totalSteps = (order.loadAddresses||[]).length + (order.unloadAddresses||[]).length;
+    const currentStep = order.currentStep || 0;
+    
+    if (currentStep >= totalSteps) return; // Уже все прошли
+    
+    const nextStep = currentStep + 1;
+    
+    // Обновляем в базе
+    try {
+        const { error } = await sb.from('orders').update({
+            current_step: nextStep,
+            updated_at: new Date().toISOString()
+        }).eq('id', id);
+        if (error) throw error;
+        
+        showToast(`✅ Этап завершен. Переход к следующему.`);
+        await loadOrders();
+    } catch (e) {
+        console.error('Ошибка сохранения этапа:', e);
+        showToast('❌ Ошибка сохранения');
+    }
+}
 function openStartChoiceModal(id) {
     startChoiceOrderId = id;
     document.getElementById('start-choice-modal').classList.add('show');
@@ -1144,20 +1184,18 @@ const select = document.getElementById('payment-type');
 const isVehicleDone = order && order.loaderInfo && !order.isLoaderFinished;
 
 if (isVehicleDone) {
-    select.innerHTML = `
-    <option value="">Выберите...</option>
-    <option value="cash">💵 Наличные получил</option>
-    <option value="card">💳 На карту ИП</option>
-    <option value="after_loaders">⏳ Оплата после грузчиков</option>
-    <option value="dispatcher">🧮 Оплата через диспетчера</option>
-    `;
+select.innerHTML = `
+<option value="">Выберите...</option>
+<option value="cash">💵 Наличные получил</option>
+<option value="card">💳 На карту ИП</option>
+<option value="after_loaders">⏳ Оплата после грузчиков</option>
+`;
 } else {
-    select.innerHTML = `
-    <option value="">Выберите...</option>
-    <option value="cash">💵 Наличные получил</option>
-    <option value="card">💳 На карту ИП</option>
-    <option value="dispatcher">🧮 Оплата через диспетчера</option>
-    `;
+select.innerHTML = `
+<option value="">Выберите...</option>
+<option value="cash">💵 Наличные получил</option>
+<option value="card">💳 На карту ИП</option>
+`;
 }
 
 if (order && order.paymentType) {
@@ -1426,7 +1464,9 @@ is_loader_finished: isLoaderFinished,
 loader_actual_time: loaderActualTime ? JSON.stringify(loaderActualTime) : null,
 work_end_time: workEndTime,
 updated_at: new Date().toISOString()
-}).eq('id', orderId);
+})
+current_step: 0, // Сбрасываем чек-лист
+.eq('id', orderId);
 if (error) throw error;
 closeModal('finish-choice-modal');
 await loadOrders();
