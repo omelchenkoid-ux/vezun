@@ -517,8 +517,14 @@ if (typeof o.actual_time === 'string') o.actual_time = JSON.parse(o.actual_time)
 if (typeof o.intercity_data === 'string') o.intercity_data = JSON.parse(o.intercity_data);
 return {
 id: o.id, name: o.name, phone: o.phone,
-loadAddresses: o.load_addresses || [],
-unloadAddresses: o.unload_addresses || [],
+loadAddresses: (() => {
+  const load = (o.load_addresses || []).map(a => ({...a, type: a.type || 'load'}));
+  const unload = (o.unload_addresses || []).map(a => ({...a, type: 'unload'}));
+  const hasTypeInLoad = load.some(a => a.type === 'unload');
+  if (hasTypeInLoad) return load;
+  return [...load, ...unload];
+})(),
+unloadAddresses: [],
 driver: o.driver, vehicleText: o.vehicle_text,
 vehicleBase: o.vehicle_base, vehicleHalf: o.vehicle_half,
 price: o.price, comment: o.comment, timeLabel: o.time_label,
@@ -903,10 +909,7 @@ const renderAddrItem = (a, type, idx, totalInType) => {
 };
 
 (o.loadAddresses || []).forEach((a, idx) => {
-    addressesHtml += renderAddrItem(a, 'load', idx, o.loadAddresses.length);
-});
-(o.unloadAddresses || []).forEach((a, idx) => {
-    addressesHtml += renderAddrItem(a, 'unload', idx, o.unloadAddresses.length);
+    addressesHtml += renderAddrItem(a, a.type || 'load', idx, o.loadAddresses.length);
 });
 
 let detailsHtml = `<div class="order-details">${o.vehicleText || ''} · ${getCategoryLabel(o.category)}${o.comment ? `<br>💬 ${o.comment}` : ''}`;
@@ -1036,16 +1039,12 @@ else if (o.status === 'started') {
     const totalSteps = (o.loadAddresses||[]).length + (o.unloadAddresses||[]).length;
     const currentStep = o.currentStep || 0; // Берем из базы
 
-    if (currentStep < totalSteps) {
-        // Есть еще адреса. Показываем кнопку "Закончил текущий адрес"
+   if (currentStep < totalSteps) {
         let stepLabel = '';
-        const loadCount = (o.loadAddresses||[]).length;
-        if (currentStep < loadCount) {
-            stepLabel = `Загрузка ${currentStep + 1}`;
-        } else {
-            stepLabel = `Выгрузка ${currentStep - loadCount + 1}`;
+        const step = (o.loadAddresses||[])[currentStep];
+        if (step) {
+            stepLabel = (step.type === 'unload' ? 'Выгрузка' : 'Загрузка') + ' ' + (currentStep + 1);
         }
-        
         buttons.push(`<button class="action-btn success" onclick="finishCurrentStep(${o.id})">⏹ Закончил (${stepLabel})</button>`);
     } else {
         // Все адреса пройдены. Показываем кнопку полного завершения
