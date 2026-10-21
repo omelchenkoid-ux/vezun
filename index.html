@@ -1401,85 +1401,90 @@ function openFinishChoiceModal(id) {
     document.getElementById('finish-choice-modal').classList.add('show');
 }
 async function confirmFinishChoice(loadersToo, fromButton) {
-const orderId = finishChoiceOrderId;
-const order = orders.find(o => o.id === orderId);
-if (!order) return;
-if (!order.loaderInfo) loadersToo = true;
-const now = new Date();
-let vehicleHours = 0, vehicleMinutes = 0;
-if (order.vehicleStartTime) {
-const start = new Date(order.vehicleStartTime);
-const diffMs = now - start;
-if (diffMs > 0) {
-vehicleHours = Math.floor(diffMs / 3600000);
-vehicleMinutes = Math.floor((diffMs % 3600000) / 60000);
-}
-}
-const vehicleActualTime = { hours: vehicleHours, minutes: vehicleMinutes };
-const endH = now.getHours();
-const endM = now.getMinutes();
-const workEndTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+    const orderId = finishChoiceOrderId;
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    if (!order.loaderInfo) loadersToo = true;
+    
+    const now = new Date();
+    let vehicleHours = 0, vehicleMinutes = 0;
+    
+    if (order.vehicleStartTime) {
+        const start = new Date(order.vehicleStartTime);
+        const diffMs = now - start;
+        if (diffMs > 0) {
+            vehicleHours = Math.floor(diffMs / 3600000);
+            vehicleMinutes = Math.floor((diffMs % 3600000) / 60000);
+        }
+    }
+    
+    const vehicleActualTime = { hours: vehicleHours, minutes: vehicleMinutes };
+    const endH = now.getHours();
+    const endM = now.getMinutes();
+    const workEndTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-let loaderActualTime = null;
-let isLoaderFinished = false;
-let newStatus;
+    let loaderActualTime = null;
+    let isLoaderFinished = false;
+    let newStatus;
 
-if (loadersToo || !order.loaderInfo) {
-if (order.loaderInfo && order.loaderStartTime) {
-const loaderStart = new Date(order.loaderStartTime);
-const diffMsLoader = now - loaderStart;
-if (diffMsLoader > 0) {
-loaderActualTime = {
-hours: Math.floor(diffMsLoader / 3600000),
-minutes: Math.floor((diffMsLoader % 3600000) / 60000)
-};
-} else {
-loaderActualTime = vehicleActualTime;
-}
-} else {
-loaderActualTime = vehicleActualTime;
-}
-isLoaderFinished = true;
-newStatus = order.loaderInfo ? 'finished' : 'completed';
-} else {
-newStatus = 'vehicle_done';
-isLoaderFinished = false;
-}
+    if (loadersToo || !order.loaderInfo) {
+        if (order.loaderInfo && order.loaderStartTime) {
+            const loaderStart = new Date(order.loaderStartTime);
+            const diffMsLoader = now - loaderStart;
+            if (diffMsLoader > 0) {
+                loaderActualTime = {
+                    hours: Math.floor(diffMsLoader / 3600000),
+                    minutes: Math.floor((diffMsLoader % 3600000) / 60000)
+                };
+            } else {
+                loaderActualTime = vehicleActualTime;
+            }
+        } else {
+            loaderActualTime = vehicleActualTime;
+        }
+        isLoaderFinished = true;
+        newStatus = order.loaderInfo ? 'finished' : 'completed';
+    } else {
+        newStatus = 'vehicle_done';
+        isLoaderFinished = false;
+    }
 
-if (timerIntervals[order.id]) {
-clearInterval(timerIntervals[order.id]);
-timerIntervals[order.id] = null;
-}
-if (loadersToo && loaderTimerIntervals[order.id]) {
-clearInterval(loaderTimerIntervals[order.id]);
-loaderTimerIntervals[order.id] = null;
-}
+    if (timerIntervals[order.id]) {
+        clearInterval(timerIntervals[order.id]);
+        timerIntervals[order.id] = null;
+    }
+    if (loadersToo && loaderTimerIntervals[order.id]) {
+        clearInterval(loaderTimerIntervals[order.id]);
+        loaderTimerIntervals[order.id] = null;
+    }
 
-try {
-const { error } = await sb.from('orders').update({
-status: newStatus,
-vehicle_actual_time: JSON.stringify(vehicleActualTime),
-is_vehicle_finished: true,
-is_loader_finished: isLoaderFinished,
-loader_actual_time: loaderActualTime ? JSON.stringify(loaderActualTime) : null,
-work_end_time: workEndTime,
-current_step: 0, // 🔽 Сброс этапа
-updated_at: new Date().toISOString()
-}).eq('id', orderId);
-if (error) throw error;
-closeModal('finish-choice-modal');
-await loadOrders();
+    try {
+        const { error } = await sb.from('orders').update({
+            status: newStatus,
+            vehicle_actual_time: JSON.stringify(vehicleActualTime),
+            is_vehicle_finished: true,
+            is_loader_finished: isLoaderFinished,
+            loader_actual_time: loaderActualTime ? JSON.stringify(loaderActualTime) : null,
+            work_end_time: workEndTime,
+            current_step: 0, // 🔽 Сброс этапа
+            updated_at: new Date().toISOString()
+        }).eq('id', orderId);
+        
+        if (error) throw error;
+        
+        closeModal('finish-choice-modal');
+        await loadOrders();
 
-if (loadersToo || !order.loaderInfo) {
-postFinishOrderId = orderId;
-openPaymentModal(orderId);
-} else {
-showToast('Машина завершена. Грузчики продолжают работу.');
-}
-} catch (e) {
-console.error('Ошибка завершения:', e);
-showToast('❌ Ошибка сохранения. Проверьте интернет.');
-}
+        if (loadersToo || !order.loaderInfo) {
+            postFinishOrderId = orderId;
+            openPaymentModal(orderId);
+        } else {
+            showToast('Машина завершена. Грузчики продолжают работу.');
+        }
+    } catch (e) {
+        console.error('Ошибка завершения:', e);
+        showToast('❌ Ошибка сохранения. Проверьте интернет.');
+    }
 }
 function openPostFinishModal() {
     if (!postFinishOrderId && finishChoiceOrderId) postFinishOrderId = finishChoiceOrderId;
