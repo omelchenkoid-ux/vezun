@@ -166,17 +166,18 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 <h3>Способ оплаты</h3>
 <div id="payment-info-amount"></div>
 <!-- 🔽 Плашка о том, что расчет сделает диспетчер -->
-<div style="background:#fffbeb; border:1px dashed #f59e0b; border-radius:8px; padding:10px; margin-bottom:12px; font-size:12px; color:#92400e;">
-  ⚠️ <b>Расчёт сделает диспетчер.</b> Выберите способ оплаты и завершите заявку.
+<div style="background:#f0fdf4; border:1px solid #a7f3d0; border-radius:8px; padding:10px; margin-bottom:12px; font-size:12px; color:#065f46;">
+  ℹ️ Итоговую сумму рассчитывает диспетчер. Вам нужно только зафиксировать, как клиент передал деньги.
 </div>
 <div class="form-group">
 <label>Выберите тип оплаты</label>
 <select id="payment-type">
-<option value="">Выберите...</option>
-<option value="cash">💵 Наличные получил</option>
-<option value="card">💳 На карту ИП</option>
-<option value="car_done">🚗 Машина закончена, грузчики продолжают</option>
-<option value="after_loaders">⏳ Оплата после грузчиков</option>
+    <option value="">Выберите...</option>
+    <option value="cash">💵 Наличные получил</option>
+    <option value="card">💳 На карту ИП</option>
+    <option value="car_done">🚗 Машина закончена, грузчики продолжают</option>
+    <option value="after_loaders">⏳ Оплата после грузчиков</option>
+    <option value="dispatcher">🧮 Оплата через диспетчера</option> <!-- 🔽 НОВЫЙ ПУНКТ -->
 </select>
 </div>
 <div class="modal-actions">
@@ -413,13 +414,14 @@ const el = document.getElementById(id);
 if (el) el.classList.remove('show');
 }
 function getPaymentLabel(type) {
-const labels = {
-'cash': '💵 Наличные получил',
-'card': '💳 На карту ИП',
-'car_done': '🚗 Машина закончена, грузчики работают',
-'after_loaders': '⏳ Оплата после грузчиков'
-};
-return labels[type] || type;
+    const labels = {
+        'cash': '💵 Наличные получил',
+        'card': '💳 На карту ИП',
+        'car_done': '🚗 Машина закончена, грузчики работают',
+        'after_loaders': '⏳ Оплата после грузчиков',
+        'dispatcher': '🧮 Оплата через диспетчера' // 🔽 НОВАЯ СТРОКА
+    };
+    return labels[type] || type;
 }
 function getCategoryLabel(cat) {
 if (cat === 'city') return 'Грузоперевозки';
@@ -1142,18 +1144,20 @@ const select = document.getElementById('payment-type');
 const isVehicleDone = order && order.loaderInfo && !order.isLoaderFinished;
 
 if (isVehicleDone) {
-select.innerHTML = `
-<option value="">Выберите...</option>
-<option value="cash">💵 Наличные получил</option>
-<option value="card">💳 На карту ИП</option>
-<option value="after_loaders">⏳ Оплата после грузчиков</option>
-`;
+    select.innerHTML = `
+    <option value="">Выберите...</option>
+    <option value="cash">💵 Наличные получил</option>
+    <option value="card">💳 На карту ИП</option>
+    <option value="after_loaders">⏳ Оплата после грузчиков</option>
+    <option value="dispatcher">🧮 Оплата через диспетчера</option>
+    `;
 } else {
-select.innerHTML = `
-<option value="">Выберите...</option>
-<option value="cash">💵 Наличные получил</option>
-<option value="card">💳 На карту ИП</option>
-`;
+    select.innerHTML = `
+    <option value="">Выберите...</option>
+    <option value="cash">💵 Наличные получил</option>
+    <option value="card">💳 На карту ИП</option>
+    <option value="dispatcher">🧮 Оплата через диспетчера</option>
+    `;
 }
 
 if (order && order.paymentType) {
