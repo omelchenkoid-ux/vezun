@@ -1463,10 +1463,9 @@ is_vehicle_finished: true,
 is_loader_finished: isLoaderFinished,
 loader_actual_time: loaderActualTime ? JSON.stringify(loaderActualTime) : null,
 work_end_time: workEndTime,
+current_step: 0, // 🔽 Сброс этапа
 updated_at: new Date().toISOString()
-})
-current_step: 0, // Сбрасываем чек-лист
-.eq('id', orderId);
+}).eq('id', orderId);
 if (error) throw error;
 closeModal('finish-choice-modal');
 await loadOrders();
