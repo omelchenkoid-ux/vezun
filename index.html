@@ -871,11 +871,44 @@ const statusLabels = {
 const statusLabel = statusLabels[o.status] || o.status;
 
 let addressesHtml = '';
-(o.loadAddresses || []).forEach(a => {
-addressesHtml += `<div class="address-item"><div class="address-label load">Загрузка</div><div class="address-text">${getAddressText(a)}</div></div>`;
+const totalSteps = (o.loadAddresses||[]).length + (o.unloadAddresses||[]).length;
+const currentStep = o.currentStep || 0;
+let stepIndex = 0;
+
+// Функция для отрисовки одного адреса
+const renderAddrItem = (a, type, idx, totalInType) => {
+    const num = idx + 1;
+    const numText = (o.loadAddresses.length + o.unloadAddresses.length > 2) ? ` ${num}` : '';
+    let statusIcon = '';
+    let statusClass = '';
+    
+    // Определяем статус: пройден, в работе, ожидает
+    if (stepIndex < currentStep) {
+        statusIcon = '✅ ';
+        statusClass = 'style="opacity:0.5"';
+    } else if (stepIndex === currentStep) {
+        statusIcon = '▶ ';
+        statusClass = 'style="background:#eff6ff;border-left:3px solid #3b82f6;padding-left:4px"';
+    } else {
+        statusIcon = '⏳ ';
+    }
+    
+    const label = type === 'load' ? `Загрузка${numText}` : `Выгрузка${numText}`;
+    const labelClass = type === 'load' ? 'load' : 'unload';
+    
+    stepIndex++;
+    
+    return `<div class="address-item" ${statusClass}>
+        <div class="address-label ${labelClass}">${statusIcon}${label}</div>
+        <div class="address-text">${getAddressText(a)}</div>
+    </div>`;
+};
+
+(o.loadAddresses || []).forEach((a, idx) => {
+    addressesHtml += renderAddrItem(a, 'load', idx, o.loadAddresses.length);
 });
-(o.unloadAddresses || []).forEach(a => {
-addressesHtml += `<div class="address-item"><div class="address-label unload">Разгрузка</div><div class="address-text">${getAddressText(a)}</div></div>`;
+(o.unloadAddresses || []).forEach((a, idx) => {
+    addressesHtml += renderAddrItem(a, 'unload', idx, o.unloadAddresses.length);
 });
 
 let detailsHtml = `<div class="order-details">${o.vehicleText || ''} · ${getCategoryLabel(o.category)}${o.comment ? `<br>💬 ${o.comment}` : ''}`;
