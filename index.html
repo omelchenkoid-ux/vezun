@@ -354,6 +354,24 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 </div>
 </div>
 
+<div class="modal-overlay" id="chat-modal" onclick="if(event.target===this)closeModal('chat-modal')">
+  <div class="modal" style="width:100%;max-width:480px">
+    <h3>💬 Чат с диспетчером</h3>
+    <div id="chat-order-info" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;color:#4b5563"></div>
+
+    <div id="chat-history" style="max-height:45vh;overflow-y:auto;margin-bottom:12px;padding-right:4px;"></div>
+
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Новое сообщение</label>
+      <textarea id="chat-text" rows="3" placeholder="Например: приехал на место, 5 палет, нужен грузовой лифт..." style="resize:vertical"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('chat-modal')">Закрыть</button>
+      <button class="btn-save" onclick="sendChatMessage()">📤 Отправить</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 
@@ -481,6 +499,7 @@ document.getElementById('main-screen').style.display = 'flex';
 document.getElementById('driver-name-display').textContent = name;
 loadOrders();
 subscribeToOrders();
+subscribeToChatRealtime();
 }
 function logout() {
 if (!confirm('Выйти из приложения?')) return;
@@ -553,6 +572,7 @@ isVehicleFinished: o.is_vehicle_finished || false,
 isLoaderFinished: o.is_loader_finished || false,
 workEndTime: o.work_end_time || null,
 currentStep: o.current_step || 0,
+note: o.note || '',
 expanded: (expandedStates[o.id] !== undefined)
 ? expandedStates[o.id]
 : !['finished', 'completed', 'done'].includes(o.status)
@@ -947,16 +967,28 @@ if (o.loaderInfo && o.loaderInfo.count > 0) {
 }
 
 let actionsHtml = renderActions(o);
+
+// 🔽 Кнопка «Чат с диспетчером» — добавляем в начало
+const chatBtn = o.note
+    ? `<button class="action-btn" style="background:#fef3c7;color:#92400e;border:2px solid #fde68a;font-weight:700" onclick="openChatModal(${o.id})">💬 Чат: ${String(o.note).length > 30 ? String(o.note).slice(0,30)+'…' : o.note}</button>`
+    : `<button class="action-btn" style="background:#f3f4f6;color:#6b7280;font-weight:600" onclick="openChatModal(${o.id})">💬 Написать диспетчеру</button>`;
+actionsHtml = chatBtn + actionsHtml;
 const expandedClass = o.expanded ? 'expanded' : '';
 
 const loadersBadge = (o.loaderInfo && o.loaderInfo.count > 0)
     ? `<span class="loaders-badge" title="Грузчики">👥${o.loaderInfo.count}</span>`
     : '';
 
+// 🔽 Значок «есть сообщение от диспетчера»
+const noteBadge = o.note
+    ? `<span class="loaders-badge" style="background:#fef3c7;color:#92400e;font-weight:700" title="Есть сообщение в чате">💬</span>`
+    : '';
+
 const collapsedHeader = `<div class="collapsed-header" onclick="toggleOrderExpand(${o.id})">
 <span class="ch-time">${o.timeLabel}</span>
 <span class="ch-client">${o.name}</span>
 ${loadersBadge}
+${noteBadge}
 <span class="ch-sum">${(o.price || 0).toLocaleString('ru-RU')} ₽</span>
 <span class="order-status">${statusLabel}</span>
 <span class="ch-arrow">▼</span>
@@ -1821,6 +1853,128 @@ window.addEventListener('focus', () => {
         loadOrders();
     }
 });
+// ============ ЧАТ С ДИСПЕТЧЕРОМ ============
+let currentChatOrderId = null;
+
+async function openChatModal(orderId) {
+  const o = orders.find(x => x.id === orderId);
+  if (!o) return;
+  currentChatOrderId = orderId;
+
+  document.getElementById('chat-order-info').innerHTML = `
+    <b>${o.name}</b> · ${o.timeLabel} · ${getCategoryLabel(o.category)}<br>
+    <span style="color:#6b7280">Водитель: ${o.driver} · ${o.vehicleText}</span>
+  `;
+
+  document.getElementById('chat-text').value = '';
+  await renderChatHistory(orderId);
+
+  document.getElementById('chat-modal').classList.add('show');
+  setTimeout(() => document.getElementById('chat-text').focus(), 150);
+}
+
+async function renderChatHistory(orderId) {
+  const wrap = document.getElementById('chat-history');
+  wrap.innerHTML = '<div style="font-size:11px;color:#9ca3af;text-align:center;padding:20px">Загрузка сообщений...</div>';
+
+  const { data, error } = await sb
+    .from('order_notes')
+    .select('*')
+    .eq('order_id', orderId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    wrap.innerHTML = '<div style="font-size:11px;color:#ef4444;text-align:center;padding:20px">Ошибка загрузки: ' + error.message + '</div>';
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px">Сообщений пока нет. Напишите первым!</div>';
+    return;
+  }
+
+  let html = '';
+  data.forEach(n => {
+    const dt = new Date(n.created_at);
+    const dtStr = dt.toLocaleDateString('ru-RU') + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const safeText = String(n.note_text || '').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+    const isDriver = n.role === 'driver' || n.author === currentDriver;
+    const align = isDriver ? 'flex-end' : 'flex-start';
+    const bg = isDriver ? '#d1fae5' : '#e0e7ff';
+    const color = isDriver ? '#065f46' : '#3730a3';
+    const label = isDriver ? '🚚 Вы' : '🧑‍💼 Диспетчер';
+    html += `<div style="display:flex;justify-content:${align};margin-bottom:8px">
+      <div style="max-width:80%;background:${bg};border-radius:10px;padding:8px 12px;font-size:13px;color:${color}">
+        <div style="font-size:10px;font-weight:700;margin-bottom:3px;opacity:0.8">${label} · ${dtStr}</div>
+        <div style="line-height:1.4">${safeText}</div>
+      </div>
+    </div>`;
+  });
+  wrap.innerHTML = html;
+  // Прокрутить вниз
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+async function sendChatMessage() {
+  if (!currentChatOrderId) return;
+  const o = orders.find(x => x.id === currentChatOrderId);
+  if (!o) return;
+
+  const text = document.getElementById('chat-text').value.trim();
+  if (!text) {
+    showToast('⚠️ Введите сообщение');
+    return;
+  }
+
+  const authorName = currentDriver || 'Водитель';
+  const nowIso = new Date().toISOString();
+
+  try {
+    // 1. Пишем в order_notes
+    const { error: insErr } = await sb.from('order_notes').insert({
+      order_id: o.id,
+      note_text: text,
+      author: authorName,
+      role: 'driver'
+    });
+    if (insErr) throw insErr;
+
+    // 2. Обновляем «последнее сообщение» в orders.note
+    const { error: updErr } = await sb.from('orders').update({
+      note: text,
+      updated_at: nowIso
+    }).eq('id', o.id);
+    if (updErr) throw updErr;
+
+    // 3. Очистить поле и обновить историю
+    document.getElementById('chat-text').value = '';
+    await renderChatHistory(o.id);
+    showToast('📤 Отправлено');
+    // Обновить карточку, чтобы значок 💬 появился
+    await loadOrders();
+  } catch (e) {
+    console.error('Ошибка отправки чата:', e);
+    showToast('❌ Ошибка отправки: ' + (e.message || ''));
+  }
+}
+
+// 🔽 Realtime: новые сообщения от диспетчера прилетают в открытую модалку
+let chatSubscription = null;
+function subscribeToChatRealtime() {
+  if (!sb) return;
+  if (chatSubscription) sb.removeChannel(chatSubscription);
+  chatSubscription = sb.channel('driver-chat-' + Date.now())
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'order_notes' },
+      (payload) => {
+        const n = payload.new;
+        const modal = document.getElementById('chat-modal');
+        if (modal && modal.classList.contains('show') && currentChatOrderId === n.order_id) {
+          renderChatHistory(currentChatOrderId);
+        }
+      })
+    .subscribe();
+}
 // ============ СТАРТ ============
 document.addEventListener('DOMContentLoaded', () => {
 if (window.location.protocol === 'file:') return;
@@ -1832,6 +1986,7 @@ document.getElementById('main-screen').style.display = 'flex';
 document.getElementById('driver-name-display').textContent = savedDriver;
 loadOrders();
 subscribeToOrders();
+subscribeToChatRealtime();
 }
 });
 </script>
