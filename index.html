@@ -177,6 +177,7 @@ body { background: #f4f5f7; min-height: 100vh; color: #1f2937; padding-bottom: e
 <option value="card">💳 На карту ИП</option>
 <option value="car_done">🚗 Машина закончена, грузчики продолжают</option>
 <option value="after_loaders">⏳ Оплата после грузчиков</option>
+<option value="dispatcher">🧮 Оплата через диспетчера</option>
 </select>
 </div>
 <div class="modal-actions">
@@ -418,7 +419,8 @@ const labels = {
 'cash': '💵 Наличные получил',
 'card': '💳 На карту ИП',
 'car_done': '🚗 Машина закончена, грузчики работают',
-'after_loaders': '⏳ Оплата после грузчиков'
+'after_loaders': '⏳ Оплата после грузчиков',
+'dispatcher': '🧮 Оплата через диспетчера'
 };
 return labels[type] || type;
 }
@@ -1222,12 +1224,14 @@ select.innerHTML = `
 <option value="cash">💵 Наличные получил</option>
 <option value="card">💳 На карту ИП</option>
 <option value="after_loaders">⏳ Оплата после грузчиков</option>
+<option value="dispatcher">🧮 Оплата через диспетчера</option>
 `;
 } else {
 select.innerHTML = `
 <option value="">Выберите...</option>
 <option value="cash">💵 Наличные получил</option>
 <option value="card">💳 На карту ИП</option>
+<option value="dispatcher">🧮 Оплата через диспетчера</option>
 `;
 }
 
