@@ -595,7 +595,8 @@ if (vehicleType === 'extended' || vehicleType === 'volumetric') return 800;
 return 600;
 }
 function driverCalcHourly(base, startHour, totalMin, districtSurcharge, halfRate) {
-if (totalMin <= 0) return 0;
+// 🔽 ИСПРАВЛЕНИЕ: totalMin <= 0 → всё равно первый час (минимум 0 минут = 1 час работы)
+// как у диспетчера в calcHourly()
 const surcharge = driverGetSurcharge(startHour);
 if (totalMin <= 60) return base + surcharge + districtSurcharge;
 const extraMin = totalMin - 63;
@@ -603,8 +604,7 @@ if (extraMin <= 0) return base + surcharge + districtSurcharge;
 const extraHalfHours = Math.ceil(extraMin / 30);
 const firstHourCost = base + surcharge + districtSurcharge;
 return firstHourCost + (extraHalfHours * halfRate);
-}
-function driverCalcStageSurcharge(totalMin, halfRate) {
+}function driverCalcStageSurcharge(totalMin, halfRate) {
     const FREE_MIN = 33;
     if (totalMin <= FREE_MIN) return 0;
     const extraMin = totalMin - FREE_MIN;
@@ -1204,13 +1204,19 @@ else if (o.status === 'started') {
                     buttons.push(`<button class="action-btn success" onclick="finishUnloadStage(${o.id})">⏹ Закончил разгрузку</button>`);
                 }
             }
-        } else {
+               } else {
             // ГОРОД/МУСОР — без таймера этапа
-            let stepLabel = '';
-            if (step) {
-                stepLabel = (step.type === 'unload' ? 'Выгрузка' : 'Загрузка') + ' ' + (currentStep + 1);
+            const isLastStep = (currentStep + 1) >= totalSteps;
+            if (isLastStep) {
+                // 🔽 ПОСЛЕДНИЙ ЭТАП: сразу "Завершить заказ" (таймер остановится в confirmFinishChoice)
+                buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})" style="background:#047857;">✅ Завершить заказ</button>`);
+            } else {
+                let stepLabel = '';
+                if (step) {
+                    stepLabel = (step.type === 'unload' ? 'Выгрузка' : 'Загрузка') + ' ' + (currentStep + 1);
+                }
+                buttons.push(`<button class="action-btn success" onclick="finishCurrentStep(${o.id})">⏹ Закончил (${stepLabel})</button>`);
             }
-            buttons.push(`<button class="action-btn success" onclick="finishCurrentStep(${o.id})">⏹ Закончил (${stepLabel})</button>`);
         }
     } else {
         buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})" style="background:#047857;">✅ Завершить заказ</button>`);
@@ -1231,6 +1237,12 @@ buttons.push(renderCalculation(o));
 }
 else if (o.status === 'finished') {
 buttons.push(renderCalculation(o));
+// 🔽 Для вывоза мусора: кнопка ввода ТБО, пока сумма не задана
+if (o.category === 'trash' && (!o.tboAmount || Number(o.tboAmount) <= 0)) {
+buttons.push(`<button class="action-btn" style="background:#dc2626;color:#fff;font-weight:700" onclick="openTboModalDriver(${o.id})">🗑 Ввести ТБО (обязательно)</button>`);
+} else if (o.category === 'trash' && o.tboAmount > 0) {
+buttons.push(`<div style="padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:12px;color:#991b1b;text-align:center;font-weight:700">🗑 ТБО: ${Number(o.tboAmount).toLocaleString('ru-RU')} ₽</div>`);
+}
 if (!o.paymentType) {
 buttons.push(`<button class="action-btn secondary" onclick="openPaymentModal(${o.id})">💰 Указать способ оплаты</button>`);
 buttons.push(`<button class="action-btn" style="background:#8b5cf6;color:#fff;" onclick="openExtraServicesFromOrder(${o.id})">🛎 Доп услуги</button>`);
@@ -1240,6 +1252,12 @@ buttons.push(`<div class="payment-info">✓ ${getPaymentLabel(o.paymentType)}<sm
 }
 else if (o.status === 'completed') {
 buttons.push(renderCalculation(o));
+// 🔽 Для вывоза мусора: кнопка ввода ТБО, пока сумма не задана
+if (o.category === 'trash' && (!o.tboAmount || Number(o.tboAmount) <= 0)) {
+buttons.push(`<button class="action-btn" style="background:#dc2626;color:#fff;font-weight:700" onclick="openTboModalDriver(${o.id})">🗑 Ввести ТБО (обязательно)</button>`);
+} else if (o.category === 'trash' && o.tboAmount > 0) {
+buttons.push(`<div style="padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:12px;color:#991b1b;text-align:center;font-weight:700">🗑 ТБО: ${Number(o.tboAmount).toLocaleString('ru-RU')} ₽</div>`);
+}
 if (!o.paymentType) {
 buttons.push(`<button class="action-btn secondary" onclick="openPaymentModal(${o.id})">💰 Указать способ оплаты</button>`);
 buttons.push(`<button class="action-btn" style="background:#8b5cf6;color:#fff;" onclick="openExtraServicesFromOrder(${o.id})">🛎 Доп услуги</button>`);
@@ -1339,6 +1357,12 @@ async function finishCurrentStep(id) {
         }).eq('id', id).select();
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('Заявка не обновилась (RLS?)');
+        // 🔽 Если это был последний этап — останавливаем таймер машины,
+        //    чтобы он не тикал до нажатия "Завершить заказ"
+        if (nextStep >= totalSteps && timerIntervals[order.id]) {
+            clearInterval(timerIntervals[order.id]);
+            delete timerIntervals[order.id];
+        }
         showToast(`✅ Этап завершен. Переход к следующему.`);
         await loadOrders();
     } catch (e) {
@@ -1346,7 +1370,6 @@ async function finishCurrentStep(id) {
         showToast('❌ Ошибка сохранения');
     }
 }
-
 async function startLoadStage(id) {
     const order = orders.find(o => o.id === id);
     if (!order) return;
@@ -1651,9 +1674,9 @@ if (!data || data.length === 0) throw new Error('Заявка не обнови�
 closeModal('payment-modal');
 showToast('✅ Оплата подтверждена');
 await loadOrders();
-if (order && order.category === 'trash') {
-openTboModalDriver(order.id);
-}
+// 🔽 Окно ТБО НЕ открываем автоматически.
+// Для вывоза мусора водитель/диспетчер введут ТБО отдельной кнопкой
+// «🗑 Ввести ТБО» в карточке заявки, пока tbo_amount не заполнен.
 } catch (e) {
 console.error('Ошибка сохранения:', e);
 showToast('Ошибка сохранения оплаты');
@@ -1701,12 +1724,17 @@ async function confirmFinishChoice(loadersToo, fromButton) {
     if (isIntercityFinish) {
         vehicleHours = 0;
         vehicleMinutes = 0;
-    } else if (order.vehicleStartTime) {
+      } else if (order.vehicleStartTime) {
         const start = new Date(order.vehicleStartTime);
         const diffMs = now - start;
         if (diffMs > 0) {
             vehicleHours = Math.floor(diffMs / 3600000);
             vehicleMinutes = Math.floor((diffMs % 3600000) / 60000);
+            // 🔽 Если отработал меньше минуты — фиксируем минимум 1 минуту,
+            //    чтобы в базе не было {0,0} (расчёт всё равно даст первый час)
+            if (vehicleHours === 0 && vehicleMinutes === 0) {
+                vehicleMinutes = 1;
+            }
         }
     }
 
@@ -1720,11 +1748,15 @@ async function confirmFinishChoice(loadersToo, fromButton) {
     let newStatus;
 
     if (loadersToo || !order.loaderInfo) {
-        if (order.loaderInfo && order.loaderStartTime) {
+                if (order.loaderInfo && order.loaderStartTime) {
             const loaderStart = new Date(order.loaderStartTime);
             const diffMsLoader = now - loaderStart;
             if (diffMsLoader > 0) {
-                loaderActualTime = { hours: Math.floor(diffMsLoader / 3600000), minutes: Math.floor((diffMsLoader % 3600000) / 60000) };
+                let lH = Math.floor(diffMsLoader / 3600000);
+                let lM = Math.floor((diffMsLoader % 3600000) / 60000);
+                // 🔽 Минимум 1 минута, чтобы не было {0,0}
+                if (lH === 0 && lM === 0) lM = 1;
+                loaderActualTime = { hours: lH, minutes: lM };
             } else {
                 loaderActualTime = vehicleActualTime;
             }
@@ -1866,8 +1898,10 @@ function openLoaderFinishModal(id) {
         const now = new Date();
         const diffMs = now - start;
         if (diffMs > 0) {
-            const autoH = Math.floor(diffMs / 3600000);
-            const autoM = Math.floor((diffMs % 3600000) / 60000);
+            let autoH = Math.floor(diffMs / 3600000);
+            let autoM = Math.floor((diffMs % 3600000) / 60000);
+            // 🔽 Минимум 1 минута, чтобы не было {0,0}
+            if (autoH === 0 && autoM === 0) autoM = 1;
             document.getElementById('loader-actual-hours').value = autoH;
             document.getElementById('loader-actual-minutes').value = autoM;
             infoEl.innerHTML = `⏱ Автоматически: <b>${autoH}ч ${autoM}мин</b><br><small>Можно скорректировать вручную</small>`;
