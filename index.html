@@ -416,12 +416,16 @@ else if (a.hasElevator) parts.push('лифт');
 const cityPrefix = a.city ? `${a.city}, ` : '';
 return cityPrefix + parts.join(', ') || 'Адрес не указан';
 }
-function getVehicleType(vehicleBase) {
-if (vehicleBase === 1500 || vehicleBase === 6000) return 'extended';
-if (vehicleBase === 1800 || vehicleBase === 7000) return 'volumetric';
-return 'standard';
-}
-const DISTRICT_OPTIONS = [
+function isGeneralVehicleTimer(o){
+    if (!o) return false;
+    if (o.category === 'city') return true;
+    if (o.category === 'trash') return true;
+    if (o.category === 'intercity-km') return true;
+    if (o.category === 'intercity-place') {
+        return !(o.intercityData && o.intercityData.fixed);
+    }
+    return false;
+}const DISTRICT_OPTIONS = [
 {value: '0', label: 'Центр'},
 {value: '100', label: 'Академгородок'},
 {value: '200', label: 'ЛПК'},
@@ -470,100 +474,145 @@ document.getElementById('main-screen').style.display = 'none';
 }
 
 async function loadOrders() {
-try {
-const targetDate = currentTab === 'today' ? getLocalDate(0) : getLocalDate(1);
-const isDispatcher = ['Максим', 'Иван'].includes(currentDriver);
-let query = sb.from('orders').select('*').eq('order_date', targetDate).order('id', { ascending: false });
-if (!isDispatcher) {
-query = query.eq('driver', currentDriver);
-query = query.in('status', ['sent', 'seen', 'started', 'finished', 'vehicle_done', 'completed', 'done']);
-}
-const { data, error } = await query;
-if (error) throw error;
-const expandedStates = {};
-orders.forEach(o => { expandedStates[o.id] = o.expanded; });
-orders = (data || []).map(o => {
-if (typeof o.load_addresses === 'string') o.load_addresses = JSON.parse(o.load_addresses);
-if (typeof o.unload_addresses === 'string') o.unload_addresses = JSON.parse(o.unload_addresses);
-if (typeof o.loader_info === 'string') o.loader_info = JSON.parse(o.loader_info);
-if (typeof o.actual_time === 'string') o.actual_time = JSON.parse(o.actual_time);
-if (typeof o.intercity_data === 'string') o.intercity_data = JSON.parse(o.intercity_data);
+    try {
+        const todayStr = getLocalDate(0);
+        const tomorrowStr = getLocalDate(1);
+        const isDispatcher = ['Максим', 'Иван'].includes(currentDriver);
 
-const allAddresses = (() => {
-  const load = (o.load_addresses || []).map(a => ({...a, type: a.type || 'load'}));
-  const unload = (o.unload_addresses || []).map(a => ({...a, type: 'unload'}));
-  const hasTypeInLoad = load.some(a => a.type === 'unload');
-  if (hasTypeInLoad) return load;
-  return [...load, ...unload];
-})();
+        // Дата, за которую грузим АКТИВНЫЕ заявки (вкладка Сегодня/Завтра)
+        const targetDate = currentTab === 'today' ? todayStr : tomorrowStr;
 
-const currentStep = parseInt(o.current_step) || 0;
-const totalSteps = allAddresses.length;
-const currentStepType = (allAddresses[currentStep] || {}).type || 'load';
+        let allRows = [];
 
-/* 🔽 НОРМАЛИЗАЦИЯ: игнорируем "чужие" времена этапов */
-let normalizedLoadStart = o.load_start_time || null;
-let normalizedLoadEnd = o.load_end_time || null;
-let normalizedUnloadStart = o.unload_start_time || null;
-let normalizedUnloadEnd = o.unload_end_time || null;
+        if (isDispatcher) {
+            // ===== ДИСПЕТЧЕРЫ: видят ВСЁ за выбранную дату =====
+            const { data, error } = await sb.from('orders')
+                .select('*')
+                .eq('order_date', targetDate)
+                .order('id', { ascending: false });
+            if (error) throw error;
+            allRows = data || [];
+        } else {
+            // ===== ВОДИТЕЛИ: только свои =====
 
-if (currentStepType !== 'load') {
-    normalizedLoadStart = null;
-    // normalizedLoadEnd — НЕ обнуляем (маркер завершения загрузки)
-}
-if (currentStepType !== 'unload') {
-    normalizedUnloadStart = null;
-    // normalizedUnloadEnd — НЕ обнуляем (маркер завершения разгрузки)
-}
+            // 1) Активные заявки на выбранную дату (БЕЗ done)
+            const { data: activeData, error: activeErr } = await sb.from('orders')
+                .select('*')
+                .eq('order_date', targetDate)
+                .eq('driver', currentDriver)
+                .in('status', ['sent', 'seen', 'started', 'finished', 'vehicle_done', 'completed'])
+                .order('id', { ascending: false });
+            if (activeErr) throw activeErr;
 
-return {
-id: o.id, name: o.name, phone: o.phone,
-loadAddresses: allAddresses,
-unloadAddresses: [],
-driver: o.driver, vehicleText: o.vehicle_text,
-vehicleBase: o.vehicle_base, vehicleHalf: o.vehicle_half,
-price: o.price, comment: o.comment, timeLabel: o.time_label,
-orderDate: o.order_date, category: o.category,
-intercityData: (o.intercity_data && o.intercity_data.type) ? o.intercity_data : null,
-trashIntercityData: (o.intercity_data && o.intercity_data.trashPlace) ? o.intercity_data.trashPlace : null,
-status: o.status, loaderInfo: o.loader_info,
-actualTime: o.actual_time,
-timeHour: o.time_hour, timeMin: o.time_min,
-startHour: o.start_hour,
-districtSurcharge: o.district_surcharge || 0,
-districtValue: o.district_value || '0',
-extraDistricts: (() => { try { return typeof o.extra_districts === 'string' ? JSON.parse(o.extra_districts) : (o.extra_districts || []); } catch(e) { return []; } })(),
-netRevenue: o.net_revenue || 0,
-paymentType: o.payment_type || null,
-tboAmount: o.tbo_amount || null,
-tboDriverLoaderPay: o.tbo_driver_loader_pay || null,
-extraServices: (() => { try { return typeof o.extra_services === 'string' ? JSON.parse(o.extra_services) : (o.extra_services || null); } catch(e) { return null; } })(),
-vehicleExtraCost: o.vehicle_extra_cost || 0,
-driverExtraIncome: o.driver_extra_income || 0,
-loadStartTime:   normalizedLoadStart,
-loadEndTime:     normalizedLoadEnd,
-unloadStartTime: normalizedUnloadStart,
-unloadEndTime:   normalizedUnloadEnd,
-stageSurcharge: Number(o.stage_surcharge) || 0,
-vehicleStartTime: o.vehicle_start_time || null,
-loaderStartTime: (o.loader_start_time && o.loader_start_time !== 'null' && o.loader_start_time !== 'undefined' && o.loader_start_time !== '') ? o.loader_start_time : null,
-vehicleActualTime: typeof o.vehicle_actual_time === 'string' ? JSON.parse(o.vehicle_actual_time) : (o.vehicle_actual_time || null),
-loaderActualTime: typeof o.loader_actual_time === 'string' ? JSON.parse(o.loader_actual_time) : (o.loader_actual_time || null),
-isVehicleFinished: o.is_vehicle_finished || false,
-isLoaderFinished: o.is_loader_finished || false,
-workEndTime: o.work_end_time || null,
-currentStep: currentStep,
-note: o.note || '',
-expanded: (expandedStates[o.id] !== undefined)
-? expandedStates[o.id]
-: !['finished', 'completed', 'done'].includes(o.status)
-};
-});
-renderOrders();
-} catch (e) {
-console.error('Ошибка загрузки:', e);
-showToast('Ошибка загрузки заявок');
-}
+            // 2) История: свои закрытые/подтверждённые (done) за ПРОШЕДШИЕ даты
+            //    (вчера и раньше). Сегодняшние done сюда НЕ попадут.
+            const { data: historyData, error: historyErr } = await sb.from('orders')
+                .select('*')
+                .eq('driver', currentDriver)
+                .eq('status', 'done')
+                .lt('order_date', todayStr)   // строго прошедшие даты
+                .order('order_date', { ascending: false })
+                .order('id', { ascending: false })
+                .limit(100);                  // ограничим историю
+            if (historyErr) {
+                console.error('Ошибка загрузки истории:', historyErr);
+            }
+
+            const activeRows = activeData || [];
+            const historyRows = (historyData || []).map(r => {
+                r._isHistory = true;
+                return r;
+            });
+
+            allRows = activeRows.concat(historyRows);
+        }
+
+        // Сохраняем состояние "развёрнуто/свёрнуто" между перезагрузками
+        const expandedStates = {};
+        orders.forEach(o => { expandedStates[o.id] = o.expanded; });
+
+        // ===== МАППИНГ (тот же, что был, + isHistory) =====
+        orders = allRows.map(o => {
+            if (typeof o.load_addresses === 'string') o.load_addresses = JSON.parse(o.load_addresses);
+            if (typeof o.unload_addresses === 'string') o.unload_addresses = JSON.parse(o.unload_addresses);
+            if (typeof o.loader_info === 'string') o.loader_info = JSON.parse(o.loader_info);
+            if (typeof o.actual_time === 'string') o.actual_time = JSON.parse(o.actual_time);
+            if (typeof o.intercity_data === 'string') o.intercity_data = JSON.parse(o.intercity_data);
+
+            const allAddresses = (() => {
+                const load = (o.load_addresses || []).map(a => ({...a, type: a.type || 'load'}));
+                const unload = (o.unload_addresses || []).map(a => ({...a, type: 'unload'}));
+                const hasTypeInLoad = load.some(a => a.type === 'unload');
+                if (hasTypeInLoad) return load;
+                return [...load, ...unload];
+            })();
+
+            const currentStep = parseInt(o.current_step) || 0;
+            const totalSteps = allAddresses.length;
+            const currentStepType = (allAddresses[currentStep] || {}).type || 'load';
+
+            let normalizedLoadStart = o.load_start_time || null;
+            let normalizedLoadEnd = o.load_end_time || null;
+            let normalizedUnloadStart = o.unload_start_time || null;
+            let normalizedUnloadEnd = o.unload_end_time || null;
+
+            if (currentStepType !== 'load') {
+                normalizedLoadStart = null;
+            }
+            if (currentStepType !== 'unload') {
+                normalizedUnloadStart = null;
+            }
+
+            return {
+                id: o.id, name: o.name, phone: o.phone,
+                loadAddresses: allAddresses,
+                unloadAddresses: [],
+                driver: o.driver, vehicleText: o.vehicle_text,
+                vehicleBase: o.vehicle_base, vehicleHalf: o.vehicle_half,
+                price: o.price, comment: o.comment, timeLabel: o.time_label,
+                orderDate: o.order_date, category: o.category,
+                intercityData: (o.intercity_data && o.intercity_data.type) ? o.intercity_data : null,
+                trashIntercityData: (o.intercity_data && o.intercity_data.trashPlace) ? o.intercity_data.trashPlace : null,
+                status: o.status, loaderInfo: o.loader_info,
+                actualTime: o.actual_time,
+                timeHour: o.time_hour, timeMin: o.time_min,
+                startHour: o.start_hour,
+                districtSurcharge: o.district_surcharge || 0,
+                districtValue: o.district_value || '0',
+                extraDistricts: (() => { try { return typeof o.extra_districts === 'string' ? JSON.parse(o.extra_districts) : (o.extra_districts || []); } catch(e) { return []; } })(),
+                netRevenue: o.net_revenue || 0,
+                paymentType: o.payment_type || null,
+                tboAmount: o.tbo_amount || null,
+                tboDriverLoaderPay: o.tbo_driver_loader_pay || null,
+                extraServices: (() => { try { return typeof o.extra_services === 'string' ? JSON.parse(o.extra_services) : (o.extra_services || null); } catch(e) { return null; } })(),
+                vehicleExtraCost: o.vehicle_extra_cost || 0,
+                driverExtraIncome: o.driver_extra_income || 0,
+                loadStartTime:   normalizedLoadStart,
+                loadEndTime:     normalizedLoadEnd,
+                unloadStartTime: normalizedUnloadStart,
+                unloadEndTime:   normalizedUnloadEnd,
+                stageSurcharge: Number(o.stage_surcharge) || 0,
+                vehicleStartTime: o.vehicle_start_time || null,
+                loaderStartTime: (o.loader_start_time && o.loader_start_time !== 'null' && o.loader_start_time !== 'undefined' && o.loader_start_time !== '') ? o.loader_start_time : null,
+                vehicleActualTime: typeof o.vehicle_actual_time === 'string' ? JSON.parse(o.vehicle_actual_time) : (o.vehicle_actual_time || null),
+                loaderActualTime: typeof o.loader_actual_time === 'string' ? JSON.parse(o.loader_actual_time) : (o.loader_actual_time || null),
+                isVehicleFinished: o.is_vehicle_finished || false,
+                isLoaderFinished: o.is_loader_finished || false,
+                workEndTime: o.work_end_time || null,
+                currentStep: currentStep,
+                note: o.note || '',
+                isHistory: !!o._isHistory,   // 🔽 НОВОЕ ПОЛЕ
+                expanded: (expandedStates[o.id] !== undefined)
+                    ? expandedStates[o.id]
+                    : (o._isHistory ? false : !['finished', 'completed', 'done'].includes(o.status))
+            };
+        });
+
+        renderOrders();
+    } catch (e) {
+        console.error('Ошибка загрузки:', e);
+        showToast('Ошибка загрузки заявок');
+    }
 }
 
 function subscribeToOrders() {
@@ -871,17 +920,17 @@ return;
 container.innerHTML = orders.map(o => renderOrderCard(o)).join('');
 
 orders.forEach(o => {
-    const isIntercityCat = ['intercity-km', 'intercity-place'].includes(o.category);
+    const generalTimer = isGeneralVehicleTimer(o);
 
-    /* 🔽 ТАЙМЕР МАШИНЫ — ТОЛЬКО ДЛЯ ГОРОДА. Для межгорода НЕ запускаем */
+    /* 🚗 Общий таймер машины — city / trash / intercity-km / intercity-place(нефикс) */
     const canShowVehicleTimer = o.status === 'started' && o.vehicleStartTime && !o.isVehicleFinished
-                                && !isIntercityCat;
+                                && generalTimer;
     if (canShowVehicleTimer) {
         if (document.getElementById(`timer-${o.id}`)) {
             startTimer(o.id, o.vehicleStartTime);
         }
     }
-    const hasValidLoaderStart = o.loaderStartTime && 
+        const hasValidLoaderStart = o.loaderStartTime && 
                                 o.loaderStartTime !== 'null' && 
                                 o.loaderStartTime !== 'undefined' && 
                                 o.loaderStartTime !== '' &&
@@ -889,11 +938,14 @@ orders.forEach(o => {
     if (o.loaderInfo && hasValidLoaderStart && !o.isLoaderFinished) {
         startLoaderTimer(o.id, o.loaderStartTime);
     }
-    if (o.status === 'started' && o.loadStartTime && !o.loadEndTime) {
-        startStageTimer(o.id, o.loadStartTime, 'load-timer');
-    }
-    if (o.status === 'started' && o.unloadStartTime && !o.unloadEndTime) {
-        startStageTimer(o.id, o.unloadStartTime, 'unload-timer');
+        // 🗺 Этапные таймеры — ТОЛЬКО для фикс-межгорода
+    if (o.status === 'started' && !generalTimer) {
+        if (o.loadStartTime && !o.loadEndTime) {
+            startStageTimer(o.id, o.loadStartTime, 'load-timer');
+        }
+        if (o.unloadStartTime && !o.unloadEndTime) {
+            startStageTimer(o.id, o.unloadStartTime, 'unload-timer');
+        }
     }
 });
 }
@@ -904,6 +956,10 @@ let statusLabel;
 const isIntercityCat = ['intercity-km', 'intercity-place'].includes(o.category);
 const totalSteps = (o.loadAddresses || []).length + (o.unloadAddresses || []).length;
 const curStep = o.currentStep || 0;
+// 🔽 Для истории принудительно ставим метку
+if (o.isHistory) {
+    statusLabel = '📜 История';
+}
 
 if (isIntercityCat && o.status === 'started' && curStep < totalSteps) {
     const step = (o.loadAddresses || [])[curStep];
@@ -1123,6 +1179,13 @@ function renderActions(o) {
             ⛔ Заявка назначена на <b>${o.driver}</b>
         </div>`;
     }
+
+// 🔽 История (закрытые за прошлые дни) — только просмотр, без действий
+if (o.isHistory) {
+    return `<div style="padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;text-align:center;color:#6b7280;font-weight:600;font-size:13px">
+        📜 Заказ закрыт и подтверждён. Только просмотр.
+    </div>` + renderCalculation(o);
+}
 let buttons = [];
 if (o.status === 'sent') {
 buttons.push(`<button class="action-btn primary" onclick="markSeen(${o.id})">✓ Увидел</button>`);
@@ -1142,14 +1205,13 @@ else if (o.status === 'seen') {
 }
 
 else if (o.status === 'started') {
-    const isIntercityCat = ['intercity-km', 'intercity-place'].includes(o.category);
+    const generalTimer = isGeneralVehicleTimer(o);
 
-    // 🚗 Таймер машины — ТОЛЬКО для города/мусора
-    if (!isIntercityCat && o.vehicleStartTime && !o.isVehicleFinished) {
+    // 🚗 Общий таймер машины — city / trash / intercity-km / intercity-place(нефикс)
+    if (generalTimer && o.vehicleStartTime && !o.isVehicleFinished) {
         buttons.push(`<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">🚗 Машина</div>
         <div class="timer vehicle" id="timer-${o.id}">00:00:00</div>`);
     }
-
     // 👥 Грузчики — для всех категорий
     const hasLoaders = !!o.loaderInfo;
     const hasValidLoaderStart = o.loaderStartTime && 
@@ -1172,7 +1234,7 @@ else if (o.status === 'started') {
         }
     }
 
-    // 🗺 Этапы маршрута
+       // 🗺 Этапы маршрута
     const totalSteps = (o.loadAddresses||[]).length + (o.unloadAddresses||[]).length;
     const currentStep = o.currentStep || 0;
 
@@ -1222,7 +1284,6 @@ else if (o.status === 'started') {
         buttons.push(`<button class="action-btn success" onclick="openFinishChoiceModal(${o.id})" style="background:#047857;">✅ Завершить заказ</button>`);
     }
 }
-
 else if (o.status === 'vehicle_done') {
 if (o.loaderInfo && o.loaderStartTime && !o.isLoaderFinished) {
 buttons.push(`<div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">👥 Грузчики (продолжают работу)</div>
@@ -1310,8 +1371,8 @@ async function markStarted(id, loadersToo = true) {
     unload_end_time: null
   };
 
-  // 🔽 Таймер машины пишем ТОЛЬКО для города/мусора. Для межгорода — null.
-  if (!isIntercityCat) {
+    // 🔧 Общий таймер машины — city / trash / intercity-km / intercity-place(нефикс)
+  if (isGeneralVehicleTimer(order)) {
     extra.vehicle_start_time = now;
   } else {
     extra.vehicle_start_time = null;
@@ -1357,12 +1418,11 @@ async function finishCurrentStep(id) {
         }).eq('id', id).select();
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('Заявка не обновилась (RLS?)');
-        // 🔽 Если это был последний этап — останавливаем таймер машины,
-        //    чтобы он не тикал до нажатия "Завершить заказ"
-        if (nextStep >= totalSteps && timerIntervals[order.id]) {
-            clearInterval(timerIntervals[order.id]);
-            delete timerIntervals[order.id];
-        }
+          // 🔧 Общий таймер (city/trash/нефикс-межгород) НЕ останавливаем на последнем этапе —
+        // он должен тикать до нажатия «Завершить заказ».
+        // Останавливаем только если это фикс-межгород (там таймера машины и нет).
+        // Ничего не делаем — таймер остановится в confirmFinishChoice.
+
         showToast(`✅ Этап завершен. Переход к следующему.`);
         await loadOrders();
     } catch (e) {
@@ -1719,19 +1779,18 @@ async function confirmFinishChoice(loadersToo, fromButton) {
     const now = new Date();
     let vehicleHours = 0, vehicleMinutes = 0;
 
-    /* 🔽 ДЛЯ МЕЖГОРОДА время машины = 0, расчёт идёт через stage_surcharge */
-    const isIntercityFinish = ['intercity-km', 'intercity-place'].includes(order.category);
-    if (isIntercityFinish) {
+   // 🔧 Для НЕФИКС-межгорода время машины считаем от vehicleStartTime (как у города).
+    //    Для ФИКС-межгорода — 0, цена идёт через stage_surcharge.
+    const generalTimerFinish = isGeneralVehicleTimer(order);
+    if (!generalTimerFinish) {
         vehicleHours = 0;
         vehicleMinutes = 0;
-      } else if (order.vehicleStartTime) {
+    } else if (order.vehicleStartTime) {
         const start = new Date(order.vehicleStartTime);
         const diffMs = now - start;
         if (diffMs > 0) {
             vehicleHours = Math.floor(diffMs / 3600000);
             vehicleMinutes = Math.floor((diffMs % 3600000) / 60000);
-            // 🔽 Если отработал меньше минуты — фиксируем минимум 1 минуту,
-            //    чтобы в базе не было {0,0} (расчёт всё равно даст первый час)
             if (vehicleHours === 0 && vehicleMinutes === 0) {
                 vehicleMinutes = 1;
             }
