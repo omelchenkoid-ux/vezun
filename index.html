@@ -982,7 +982,7 @@ let stepIndex = 0;
 
 const renderAddrItem = (a, type, idx) => {
     const num = idx + 1;
-    const numText = (o.loadAddresses.length + o.unloadAddresses.length > 2) ? ` ${num}` : '';
+    const numText = (o.loadAddresses.length > 2) ? ` ${num}` : '';
     let statusIcon = '';
     let statusClass = '';
     if (stepIndex < currentStep) {
@@ -994,8 +994,10 @@ const renderAddrItem = (a, type, idx) => {
     } else {
         statusIcon = '⏳ ';
     }
-    const label = type === 'load' ? `Загрузка${numText}` : `Выгрузка${numText}`;
-    const labelClass = type === 'load' ? 'load' : 'unload';
+    // 🔽 ЖЕСТКО БЕРЕМ ТИП ИЗ АДРЕСА (load или unload)
+    const actualType = a.type === 'unload' ? 'unload' : 'load';
+    const label = actualType === 'unload' ? `Разгрузка${numText}` : `Загрузка${numText}`;
+    const labelClass = actualType === 'unload' ? 'unload' : 'load';
     stepIndex++;
     return `<div class="address-item" ${statusClass}>
         <div class="address-label ${labelClass}">${statusIcon}${label}</div>
