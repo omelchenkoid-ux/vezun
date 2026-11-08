@@ -919,6 +919,45 @@ if (orders.length === 0) {
 container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">Нет заявок на ${currentTab === 'today' ? 'сегодня' : 'завтра'}</div></div>`;
 return;
 }
+
+// 🔽 СОРТИРОВКА ЗАЯВОК
+orders.sort((a, b) => {
+    // 1. Статусы, которые должны быть вверху (Активные)
+    // Если статус 'done' (Подтверждена) — она уходит в самый низ.
+    const aDone = a.status === 'done';
+    const bDone = b.status === 'done';
+    
+    if (aDone !== bDone) {
+        return aDone ? 1 : -1; // Если aDone true, значит она "больше" и уходит вниз. 
+    }
+
+    // 2. Если обе заявки активны (или обе завершены) — сортируем по времени.
+    // Время берем из timeLabel (например "2026-11-06 9:00" или "Текущий 13:40").
+    // Чтобы "Текущий" был наверху, мы считаем его самым "новым" (или самым ранним).
+    
+    // Простой парсинг времени:
+    const getTimeValue = (o) => {
+        const tl = o.timeLabel || '';
+        // Если заявка "Текущая", ставим ей очень большое время, чтобы она была вверху
+        if (tl.startsWith('Текущий')) return 999999; 
+        
+        // Парсим "2026-11-06 9:00"
+        const match = tl.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/);
+        if (match) {
+            // Возвращаем минуты с начала дня для сортировки (часы * 60 + минуты)
+            return parseInt(match[4]) * 60 + parseInt(match[5]);
+        }
+        return 0;
+    };
+
+    const timeA = getTimeValue(a);
+    const timeB = getTimeValue(b);
+
+    // Сортируем по времени: сначала самые ранние (утро), потом поздние.
+    // Если хотите наоборот (сначала поздние) — поменяйте местами timeA и timeB.
+    return timeA - timeB; 
+});
+
 container.innerHTML = orders.map(o => renderOrderCard(o)).join('');
 
 orders.forEach(o => {
